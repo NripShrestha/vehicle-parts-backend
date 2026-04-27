@@ -11,5 +11,9 @@ namespace VehicleParts.API.Data
         }
 
         public DbSet<Part> Parts { get; set; }
+        public DbSet<User> Users { get; set; }
+        public DbSet<Staff> Staffs { get; set; }
+        public DbSet<Customer> Customers { get; set; }
+
     }
 }
