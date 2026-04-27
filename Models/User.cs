@@ -5,7 +5,7 @@ namespace VehicleParts.API.Models
     public class User
     {
         [Key]
-        public int Id { get; set; }
+        public int UserID { get; set; }
         [Required]
         public string FullName { get; set; } = string.Empty;
         [Required, EmailAddress]
@@ -15,5 +15,8 @@ namespace VehicleParts.API.Models
         public string Role { get; set; } = "Customer"; // Admin, Staff, Customer
         public string? PhoneNumber { get; set; }
         public string? Address { get; set; }
+
+        public Staff? Staff { get; set; }
+        public Customer? Customer { get; set; }
     }
 }

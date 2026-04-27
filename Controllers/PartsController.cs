@@ -64,7 +64,7 @@ namespace VehicleParts.API.Controllers
             await _context.SaveChangesAsync();
 
             // Returns a 201 Created status code with a link to the new resource
-            return CreatedAtAction(nameof(GetPart), new { id = part.Id }, part);
+            return CreatedAtAction(nameof(GetPart), new { id = part.PartID }, part);
         }
 
         // PUT: api/Parts/5
@@ -72,7 +72,7 @@ namespace VehicleParts.API.Controllers
         [Authorize(Roles = "Admin")] // Secured: Only Admin
         public async Task<IActionResult> PutPart(int id, [FromBody] Part part)
         {
-            if (id != part.Id)
+            if (id != part.PartID)
             {
                 return BadRequest(new { message = "Part ID in the URL does not match the ID in the body." });
             }
@@ -134,7 +134,7 @@ namespace VehicleParts.API.Controllers
         // Helper method for the PUT operation
         private bool PartExists(int id)
         {
-            return _context.Parts.Any(e => e.Id == id);
+            return _context.Parts.Any(e => e.PartID == id);
         }
     }
 }

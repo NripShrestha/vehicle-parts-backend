@@ -16,5 +16,21 @@ namespace VehicleParts.API.Data
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Vendor> Vendors { get; set; }
 
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<Staff>()
+                .HasOne(s => s.User)
+                .WithOne(u => u.Staff)
+                .HasForeignKey<Staff>(s => s.UserID)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Customer>()
+                .HasOne(c => c.User)
+                .WithOne(u => u.Customer)
+                .HasForeignKey<Customer>(c => c.UserID)
+                .OnDelete(DeleteBehavior.Cascade);
+        }
     }
 }

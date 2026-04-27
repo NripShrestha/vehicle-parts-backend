@@ -8,19 +8,16 @@ namespace VehicleParts.API.DTOs
         [MaxLength(100)]
         public string VendorName { get; set; } = string.Empty;
 
-        [MaxLength(100)]
-        public string? ContactPerson { get; set; }
-
         [Required]
         [Phone]
-        public string PhoneNumber { get; set; } = string.Empty;
+        public string VendorPhone { get; set; } = string.Empty;
 
         [Required]
         [EmailAddress]
-        public string Email { get; set; } = string.Empty;
+        public string VendorEmail { get; set; } = string.Empty;
 
         [MaxLength(255)]
-        public string? Address { get; set; }
+        public string? VendorAddress { get; set; }
     }
 
     public class UpdateVendorDto : CreateVendorDto

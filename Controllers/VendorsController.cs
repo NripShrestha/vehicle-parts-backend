@@ -53,16 +53,15 @@ namespace VehicleParts.API.Controllers
             var vendor = new Vendor
             {
                 VendorName = dto.VendorName,
-                ContactPerson = dto.ContactPerson,
-                PhoneNumber = dto.PhoneNumber,
-                Email = dto.Email,
-                Address = dto.Address
+                VendorPhone = dto.VendorPhone,
+                VendorEmail = dto.VendorEmail,
+                VendorAddress = dto.VendorAddress
             };
 
             _context.Vendors.Add(vendor);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetVendor), new { id = vendor.Id }, vendor);
+            return CreatedAtAction(nameof(GetVendor), new { id = vendor.VendorID }, vendor);
         }
 
         // PUT: api/Vendors/5
@@ -82,10 +81,9 @@ namespace VehicleParts.API.Controllers
             }
 
             vendor.VendorName = dto.VendorName;
-            vendor.ContactPerson = dto.ContactPerson;
-            vendor.PhoneNumber = dto.PhoneNumber;
-            vendor.Email = dto.Email;
-            vendor.Address = dto.Address;
+            vendor.VendorPhone = dto.VendorPhone;
+            vendor.VendorEmail = dto.VendorEmail;
+            vendor.VendorAddress = dto.VendorAddress;
 
             try
             {
@@ -124,7 +122,7 @@ namespace VehicleParts.API.Controllers
 
         private bool VendorExists(int id)
         {
-            return _context.Vendors.Any(e => e.Id == id);
+            return _context.Vendors.Any(e => e.VendorID == id);
         }
     }
 }

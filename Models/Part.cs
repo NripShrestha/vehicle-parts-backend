@@ -5,7 +5,7 @@ namespace VehicleParts.API.Models
     public class Part
     {
         [Key]
-        public int Id { get; set; }   // Primary Key
+        public int PartID { get; set; }   // Primary Key
 
         [Required]
         [MaxLength(100)]

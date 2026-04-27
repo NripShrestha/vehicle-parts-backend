@@ -29,16 +29,24 @@ namespace VehicleParts.API.Controllers
                 return BadRequest("Email is already registered.");
             }
 
-            // 2. Create default Customer user
-            // To add Admins/Staff later, you will create a separate secured endpoint
-            var newCustomer = new Customer
+            // 2. Create User first
+            var newUser = new User
             {
                 FullName = request.FullName,
                 Email = request.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
                 PhoneNumber = request.PhoneNumber,
                 Address = request.Address,
-                Role = "Customer", // Default role
+                Role = "Customer" // Default role
+            };
+
+            _context.Users.Add(newUser);
+            await _context.SaveChangesAsync();
+
+            // 3. Create associated Customer record
+            var newCustomer = new Customer
+            {
+                UserID = newUser.UserID,
                 CustomerType = "Regular",
                 CreditBalance = 0
             };
@@ -72,7 +80,7 @@ namespace VehicleParts.API.Controllers
             return Ok(new 
             { 
                 token, 
-                user = new { user.Id, user.FullName, user.Email, user.Role } 
+                user = new { user.UserID, user.FullName, user.Email, user.Role } 
             });
         }
     }
