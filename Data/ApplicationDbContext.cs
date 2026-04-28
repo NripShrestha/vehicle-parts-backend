@@ -16,6 +16,8 @@ namespace VehicleParts.API.Data
         public DbSet<Customer> Customers { get; set; }
         public DbSet<Vendor> Vendors { get; set; }
         public DbSet<Vehicle> Vehicles { get; set; }
+        public DbSet<PurchaseInvoice> PurchaseInvoices { get; set; }
+        public DbSet<PurchaseItem> PurchaseItems { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
