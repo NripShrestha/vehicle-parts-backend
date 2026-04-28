@@ -36,17 +36,17 @@ namespace VehicleParts.API.Controllers
                 // Assuming you have a Vehicles navigation property in your Customer model
                 // .Include(c => c.Vehicles) 
                 .Where(c => 
-                    c.User.FullName.ToLower().Contains(query) ||
-                    c.User.PhoneNumber.Contains(query) ||
+                    (c.User != null && c.User.FullName.ToLower().Contains(query)) ||
+                    (c.User != null && (c.User.PhoneNumber ?? string.Empty).Contains(query)) ||
                     c.CustomerID.ToString() == query ||
                     // This searches within the associated vehicles' license plates
                     _context.Vehicles.Any(v => v.CustomerID == c.CustomerID && v.VehicleNumber.ToLower().Contains(query))
                 )
                 .Select(c => new {
                     c.CustomerID,
-                    c.User.FullName,
-                    c.User.Email,
-                    c.User.PhoneNumber,
+                    FullName = c.User != null ? c.User.FullName : string.Empty,
+                    Email = c.User != null ? c.User.Email : string.Empty,
+                    PhoneNumber = c.User != null ? c.User.PhoneNumber : null,
                     c.CustomerType,
                     c.CreditBalance,
                     // Map your vehicles here
@@ -102,18 +102,86 @@ namespace VehicleParts.API.Controllers
         // FEATURE F8: Staff can view customer history
         // --------------------------------------------------------
         [HttpGet("{id}/details")]
-        public async Task<IActionResult> GetCustomerFullDetails(int id)
+        [HttpGet("{id}/history")]
+        public async Task<ActionResult<CustomerHistoryDto>> GetCustomerFullDetails(int id)
         {
             var customer = await _context.Customers
+                .AsNoTracking()
                 .Include(c => c.User)
                 .Include(c => c.Vehicles)
-                // Assuming you have an Invoices or Sales table for history
-                // .Include(c => c.SalesHistory) 
                 .FirstOrDefaultAsync(c => c.CustomerID == id);
 
-            if (customer == null) return NotFound();
+            if (customer == null)
+            {
+                return NotFound(new { message = $"Customer with ID {id} was not found." });
+            }
 
-            return Ok(customer);
+            var salesHistory = await _context.SalesInvoices
+                .AsNoTracking()
+                .Where(invoice => invoice.CustomerID == id)
+                .Include(invoice => invoice.Items)
+                    .ThenInclude(item => item.Part)
+                .Include(invoice => invoice.Staff)
+                    .ThenInclude(staff => staff!.User)
+                .OrderByDescending(invoice => invoice.InvoiceDate)
+                .ToListAsync();
+
+            if (salesHistory.Count == 0)
+            {
+                return NotFound(new
+                {
+                    message = "Customer history is not available yet. It can only be viewed after Sales creates an invoice for this customer."
+                });
+            }
+
+            var response = new CustomerHistoryDto
+            {
+                CustomerID = customer.CustomerID,
+                FullName = customer.User?.FullName ?? string.Empty,
+                Email = customer.User?.Email ?? string.Empty,
+                PhoneNumber = customer.User?.PhoneNumber ?? string.Empty,
+                CustomerType = customer.CustomerType,
+                CreditBalance = customer.CreditBalance,
+                TotalInvoices = salesHistory.Count,
+                TotalSpent = salesHistory.Sum(invoice => invoice.TotalAmount),
+                LastPurchaseDate = salesHistory.First().InvoiceDate,
+                Vehicles = customer.Vehicles
+                    .Select(vehicle => new CustomerHistoryVehicleDto
+                    {
+                        VehicleID = vehicle.VehicleID,
+                        VehicleNumber = vehicle.VehicleNumber,
+                        Brand = vehicle.Brand,
+                        Model = vehicle.Model,
+                        Year = vehicle.Year
+                    })
+                    .ToList(),
+                SalesHistory = salesHistory
+                    .Select(invoice => new CustomerHistoryInvoiceDto
+                    {
+                        SalesInvoiceID = invoice.SalesInvoiceID,
+                        InvoiceDate = invoice.InvoiceDate,
+                        StaffID = invoice.StaffID,
+                        StaffName = invoice.Staff?.User?.FullName ?? "Unknown",
+                        TotalAmount = invoice.TotalAmount,
+                        DiscountAmount = invoice.DiscountAmount,
+                        CreditAmount = invoice.CreditAmount,
+                        PaymentStatus = invoice.PaymentStatus,
+                        Items = invoice.Items
+                            .Select(item => new CustomerHistoryInvoiceItemDto
+                            {
+                                SalesInvoiceItemID = item.SalesInvoiceItemID,
+                                PartID = item.PartID,
+                                PartName = item.Part?.PartName ?? "Unknown",
+                                QuantitySold = item.QuantitySold,
+                                UnitPrice = item.UnitPrice,
+                                LineTotal = item.LineTotal
+                            })
+                            .ToList()
+                    })
+                    .ToList()
+            };
+
+            return Ok(response);
         }
     }
 }
