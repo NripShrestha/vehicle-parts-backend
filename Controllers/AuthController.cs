@@ -60,27 +60,43 @@ namespace VehicleParts.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto request)
         {
-            // 1. Find user
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+            // 1. Find user and INCLUDE the role-specific tables
+            var user = await _context.Users
+                .Include(u => u.Customer)
+                .Include(u => u.Staff)
+                .FirstOrDefaultAsync(u => u.Email == request.Email);
+
             if (user == null)
             {
-                return Unauthorized("Invalid email or password.");
+                return Unauthorized(new { message = "Invalid email or password." });
             }
 
             // 2. Verify password with BCrypt
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
             if (!isPasswordValid)
             {
-                return Unauthorized("Invalid email or password.");
+                return Unauthorized(new { message = "Invalid email or password." });
             }
 
             // 3. Generate token
             var token = _jwtService.GenerateToken(user);
 
+            // 4. Extract Role-Specific IDs for the frontend
+            int? customerId = user.Customer?.CustomerID;
+            int? staffId = user.Staff?.StaffID;
+
             return Ok(new 
             { 
                 token, 
-                user = new { user.UserID, user.FullName, user.Email, user.Role } 
+                user = new 
+                { 
+                    UserID = user.UserID, 
+                    FullName = user.FullName, 
+                    Email = user.Email, 
+                    Role = user.Role,
+                    CustomerID = customerId, // Frontend uses this to view own history
+                    StaffID = staffId        // Frontend uses this to create sales invoices
+                } 
             });
         }
     }

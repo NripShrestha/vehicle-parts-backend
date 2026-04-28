@@ -22,6 +22,43 @@ namespace VehicleParts.API.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("VehicleParts.API.Models.Appointment", b =>
+                {
+                    b.Property<int>("AppointmentID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("AppointmentID"));
+
+                    b.Property<DateTime>("AppointmentDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("AppointmentStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<TimeSpan>("AppointmentTime")
+                        .HasColumnType("interval");
+
+                    b.Property<int>("CustomerID")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ServiceType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("VehicleID")
+                        .HasColumnType("integer");
+
+                    b.HasKey("AppointmentID");
+
+                    b.HasIndex("CustomerID");
+
+                    b.HasIndex("VehicleID");
+
+                    b.ToTable("Appointments");
+                });
+
             modelBuilder.Entity("VehicleParts.API.Models.Customer", b =>
                 {
                     b.Property<int>("CustomerID")
@@ -46,6 +83,38 @@ namespace VehicleParts.API.Migrations
                         .IsUnique();
 
                     b.ToTable("Customers");
+                });
+
+            modelBuilder.Entity("VehicleParts.API.Models.Notification", b =>
+                {
+                    b.Property<int>("NotificationID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("NotificationID"));
+
+                    b.Property<DateTime>("CreatedDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("NotificationType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("UserID")
+                        .HasColumnType("integer");
+
+                    b.HasKey("NotificationID");
+
+                    b.HasIndex("UserID");
+
+                    b.ToTable("Notifications");
                 });
 
             modelBuilder.Entity("VehicleParts.API.Models.Part", b =>
@@ -78,18 +147,52 @@ namespace VehicleParts.API.Migrations
                     b.Property<int>("StockQuantity")
                         .HasColumnType("integer");
 
+                    b.Property<int>("VendorID")
+                        .HasColumnType("integer");
+
                     b.HasKey("PartID");
+
+                    b.HasIndex("VendorID");
 
                     b.ToTable("Parts");
                 });
 
-            modelBuilder.Entity("VehicleParts.API.Models.PurchaseInvoice", b =>
+            modelBuilder.Entity("VehicleParts.API.Models.PartRequest", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("PartRequestID")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PartRequestID"));
+
+                    b.Property<int>("CustomerID")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("RequestDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RequestStatus")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("RequestedPartName")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("PartRequestID");
+
+                    b.HasIndex("CustomerID");
+
+                    b.ToTable("PartRequests");
+                });
+
+            modelBuilder.Entity("VehicleParts.API.Models.PurchaseInvoice", b =>
+                {
+                    b.Property<int>("PurchaseInvoiceID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PurchaseInvoiceID"));
 
                     b.Property<DateTime>("PurchaseDate")
                         .HasColumnType("timestamp with time zone");
@@ -100,40 +203,71 @@ namespace VehicleParts.API.Migrations
                     b.Property<int>("VendorID")
                         .HasColumnType("integer");
 
-                    b.HasKey("Id");
+                    b.HasKey("PurchaseInvoiceID");
 
                     b.HasIndex("VendorID");
 
                     b.ToTable("PurchaseInvoices");
                 });
 
-            modelBuilder.Entity("VehicleParts.API.Models.PurchaseItem", b =>
+            modelBuilder.Entity("VehicleParts.API.Models.PurchaseInvoiceItem", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<int>("PurchaseInvoiceItemID")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer");
 
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("PurchaseInvoiceItemID"));
+
+                    b.Property<decimal>("LineTotal")
+                        .HasColumnType("numeric");
 
                     b.Property<int>("PartID")
                         .HasColumnType("integer");
 
-                    b.Property<int>("PurchaseInvoiceId")
+                    b.Property<int>("PurchaseInvoiceID")
                         .HasColumnType("integer");
 
-                    b.Property<int>("Quantity")
+                    b.Property<int>("QuantityPurchased")
                         .HasColumnType("integer");
 
                     b.Property<decimal>("UnitCost")
                         .HasColumnType("numeric");
 
-                    b.HasKey("Id");
+                    b.HasKey("PurchaseInvoiceItemID");
 
                     b.HasIndex("PartID");
 
-                    b.HasIndex("PurchaseInvoiceId");
+                    b.HasIndex("PurchaseInvoiceID");
 
-                    b.ToTable("PurchaseItems");
+                    b.ToTable("PurchaseInvoiceItems");
+                });
+
+            modelBuilder.Entity("VehicleParts.API.Models.Review", b =>
+                {
+                    b.Property<int>("ReviewID")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("ReviewID"));
+
+                    b.Property<string>("Comment")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("CustomerID")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("ReviewDate")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("ReviewID");
+
+                    b.HasIndex("CustomerID");
+
+                    b.ToTable("Reviews");
                 });
 
             modelBuilder.Entity("VehicleParts.API.Models.SalesInvoice", b =>
@@ -333,6 +467,25 @@ namespace VehicleParts.API.Migrations
                     b.ToTable("Vendors");
                 });
 
+            modelBuilder.Entity("VehicleParts.API.Models.Appointment", b =>
+                {
+                    b.HasOne("VehicleParts.API.Models.Customer", "Customer")
+                        .WithMany("Appointments")
+                        .HasForeignKey("CustomerID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("VehicleParts.API.Models.Vehicle", "Vehicle")
+                        .WithMany()
+                        .HasForeignKey("VehicleID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+
+                    b.Navigation("Vehicle");
+                });
+
             modelBuilder.Entity("VehicleParts.API.Models.Customer", b =>
                 {
                     b.HasOne("VehicleParts.API.Models.User", "User")
@@ -344,10 +497,21 @@ namespace VehicleParts.API.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("VehicleParts.API.Models.PurchaseInvoice", b =>
+            modelBuilder.Entity("VehicleParts.API.Models.Notification", b =>
+                {
+                    b.HasOne("VehicleParts.API.Models.User", "User")
+                        .WithMany("Notifications")
+                        .HasForeignKey("UserID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("VehicleParts.API.Models.Part", b =>
                 {
                     b.HasOne("VehicleParts.API.Models.Vendor", "Vendor")
-                        .WithMany()
+                        .WithMany("Parts")
                         .HasForeignKey("VendorID")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -355,7 +519,29 @@ namespace VehicleParts.API.Migrations
                     b.Navigation("Vendor");
                 });
 
-            modelBuilder.Entity("VehicleParts.API.Models.PurchaseItem", b =>
+            modelBuilder.Entity("VehicleParts.API.Models.PartRequest", b =>
+                {
+                    b.HasOne("VehicleParts.API.Models.Customer", "Customer")
+                        .WithMany("PartRequests")
+                        .HasForeignKey("CustomerID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
+                });
+
+            modelBuilder.Entity("VehicleParts.API.Models.PurchaseInvoice", b =>
+                {
+                    b.HasOne("VehicleParts.API.Models.Vendor", "Vendor")
+                        .WithMany("PurchaseInvoices")
+                        .HasForeignKey("VendorID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Vendor");
+                });
+
+            modelBuilder.Entity("VehicleParts.API.Models.PurchaseInvoiceItem", b =>
                 {
                     b.HasOne("VehicleParts.API.Models.Part", "Part")
                         .WithMany()
@@ -363,27 +549,40 @@ namespace VehicleParts.API.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("VehicleParts.API.Models.PurchaseInvoice", null)
+                    b.HasOne("VehicleParts.API.Models.PurchaseInvoice", "PurchaseInvoice")
                         .WithMany("Items")
-                        .HasForeignKey("PurchaseInvoiceId")
+                        .HasForeignKey("PurchaseInvoiceID")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Part");
+
+                    b.Navigation("PurchaseInvoice");
+                });
+
+            modelBuilder.Entity("VehicleParts.API.Models.Review", b =>
+                {
+                    b.HasOne("VehicleParts.API.Models.Customer", "Customer")
+                        .WithMany("Reviews")
+                        .HasForeignKey("CustomerID")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Customer");
                 });
 
             modelBuilder.Entity("VehicleParts.API.Models.SalesInvoice", b =>
                 {
                     b.HasOne("VehicleParts.API.Models.Customer", "Customer")
-                        .WithMany()
+                        .WithMany("SalesInvoices")
                         .HasForeignKey("CustomerID")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("VehicleParts.API.Models.Staff", "Staff")
-                        .WithMany()
+                        .WithMany("SalesInvoices")
                         .HasForeignKey("StaffID")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Customer");
@@ -434,6 +633,14 @@ namespace VehicleParts.API.Migrations
 
             modelBuilder.Entity("VehicleParts.API.Models.Customer", b =>
                 {
+                    b.Navigation("Appointments");
+
+                    b.Navigation("PartRequests");
+
+                    b.Navigation("Reviews");
+
+                    b.Navigation("SalesInvoices");
+
                     b.Navigation("Vehicles");
                 });
 
@@ -447,11 +654,25 @@ namespace VehicleParts.API.Migrations
                     b.Navigation("Items");
                 });
 
+            modelBuilder.Entity("VehicleParts.API.Models.Staff", b =>
+                {
+                    b.Navigation("SalesInvoices");
+                });
+
             modelBuilder.Entity("VehicleParts.API.Models.User", b =>
                 {
                     b.Navigation("Customer");
 
+                    b.Navigation("Notifications");
+
                     b.Navigation("Staff");
+                });
+
+            modelBuilder.Entity("VehicleParts.API.Models.Vendor", b =>
+                {
+                    b.Navigation("Parts");
+
+                    b.Navigation("PurchaseInvoices");
                 });
 #pragma warning restore 612, 618
         }

@@ -47,20 +47,21 @@ namespace VehicleParts.API.Controllers
                     }
 
                     // Add Invoice Item
-                    var purchaseItem = new PurchaseItem
+                    var purchaseItem = new PurchaseInvoiceItem
                     {
-                        PurchaseInvoiceId = invoice.Id,
+                        PurchaseInvoiceID = invoice.PurchaseInvoiceID,
                         PartID = itemDto.PartId,
-                        Quantity = itemDto.Quantity,
-                        UnitCost = itemDto.UnitCost
+                        QuantityPurchased = itemDto.Quantity,
+                        UnitCost = itemDto.UnitCost,
+                        LineTotal = itemDto.Quantity * itemDto.UnitCost
                     };
-                    _context.PurchaseItems.Add(purchaseItem);
+                    _context.PurchaseInvoiceItems.Add(purchaseItem);
                 }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                return Ok(new { message = "Purchase invoice created and stock updated.", invoiceId = invoice.Id });
+                return Ok(new { message = "Purchase invoice created and stock updated.", invoiceId = invoice.PurchaseInvoiceID });
             }
             catch (Exception ex)
             {
