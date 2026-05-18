@@ -31,8 +31,9 @@ namespace VehicleParts.API.DTOs
         public int StaffID { get; set; }
         public string StaffName { get; set; } = string.Empty;
         public DateTime InvoiceDate { get; set; }
-        public decimal TotalAmount { get; set; }
+        public decimal Subtotal { get; set; }
         public decimal DiscountAmount { get; set; }
+        public decimal TotalAmount { get; set; }
         public decimal CreditAmount { get; set; }
         public string PaymentStatus { get; set; } = string.Empty;
         public List<SalesInvoiceItemDto> Items { get; set; } = new();

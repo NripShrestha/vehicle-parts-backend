@@ -19,10 +19,13 @@ namespace VehicleParts.API.Models
         public DateTime InvoiceDate { get; set; } = DateTime.UtcNow;
 
         [Column(TypeName = "decimal(18,2)")]
-        public decimal TotalAmount { get; set; }
+        public decimal Subtotal { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal DiscountAmount { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal TotalAmount { get; set; }
 
         [Column(TypeName = "decimal(18,2)")]
         public decimal CreditAmount { get; set; }

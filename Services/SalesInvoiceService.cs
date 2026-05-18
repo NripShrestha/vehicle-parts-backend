@@ -53,6 +53,7 @@ namespace VehicleParts.API.Services
                 invoice.DiscountAmount = subtotal * 0.10m;
             }
 
+            invoice.Subtotal = subtotal;
             invoice.TotalAmount = subtotal - invoice.DiscountAmount;
 
             _context.SalesInvoices.Add(invoice);
@@ -118,8 +119,9 @@ namespace VehicleParts.API.Services
                 StaffID = invoice.StaffID,
                 StaffName = invoice.Staff?.User?.FullName ?? "Unknown",
                 InvoiceDate = invoice.InvoiceDate,
-                TotalAmount = invoice.TotalAmount,
+                Subtotal = invoice.Subtotal,
                 DiscountAmount = invoice.DiscountAmount,
+                TotalAmount = invoice.TotalAmount,
                 CreditAmount = invoice.CreditAmount,
                 PaymentStatus = invoice.PaymentStatus,
                 Items = invoice.Items.Select(item => new SalesInvoiceItemDto
