@@ -103,6 +103,57 @@ namespace VehicleParts.API.Services
             return await GetInvoiceByIdAsync(invoice.SalesInvoiceID) ?? throw new Exception("Failed to retrieve created invoice.");
         }
 
+        public async Task<CustomerOwnSalesInvoiceDto> CreateCustomerPurchaseAsync(
+            int customerId,
+            CreateCustomerPurchaseDto createDto)
+        {
+            if (createDto.Items == null || createDto.Items.Count == 0)
+            {
+                throw new Exception("At least one part is required to complete a purchase.");
+            }
+
+            var portalStaffId = await _context.Staffs
+                .OrderBy(staff => staff.StaffID)
+                .Select(staff => staff.StaffID)
+                .FirstOrDefaultAsync();
+
+            if (portalStaffId == 0)
+            {
+                throw new Exception("No staff member is available to process online purchases.");
+            }
+
+            var invoice = await CreateInvoiceAsync(new CreateSalesInvoiceDto
+            {
+                CustomerID = customerId,
+                StaffID = portalStaffId,
+                PaymentStatus = createDto.PaymentStatus,
+                CreditAmount = createDto.CreditAmount,
+                Items = createDto.Items
+            });
+
+            return new CustomerOwnSalesInvoiceDto
+            {
+                SalesInvoiceID = invoice.SalesInvoiceID,
+                InvoiceDate = invoice.InvoiceDate,
+                StaffName = invoice.StaffName,
+                Subtotal = invoice.Subtotal,
+                DiscountAmount = invoice.DiscountAmount,
+                TotalAmount = invoice.TotalAmount,
+                CreditAmount = invoice.CreditAmount,
+                PaymentStatus = invoice.PaymentStatus,
+                Items = invoice.Items
+                    .Select(item => new CustomerOwnSalesInvoiceItemDto
+                    {
+                        PartID = item.PartID,
+                        PartName = item.PartName,
+                        QuantitySold = item.QuantitySold,
+                        UnitPrice = item.UnitPrice,
+                        LineTotal = item.LineTotal
+                    })
+                    .ToList()
+            };
+        }
+
         public async Task<SalesInvoiceDto?> GetInvoiceByIdAsync(int id)
         {
             var invoice = await _context.SalesInvoices

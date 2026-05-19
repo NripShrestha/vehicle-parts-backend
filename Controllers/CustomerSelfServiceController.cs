@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using VehicleParts.API.Data;
 using VehicleParts.API.DTOs;
 using VehicleParts.API.Models;
+using VehicleParts.API.Services;
 
 namespace VehicleParts.API.Controllers
 {
@@ -14,10 +15,14 @@ namespace VehicleParts.API.Controllers
     public class CustomerSelfServiceController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly ISalesInvoiceService _salesInvoiceService;
 
-        public CustomerSelfServiceController(ApplicationDbContext context)
+        public CustomerSelfServiceController(
+            ApplicationDbContext context,
+            ISalesInvoiceService salesInvoiceService)
         {
             _context = context;
+            _salesInvoiceService = salesInvoiceService;
         }
 
         [HttpGet("catalog")]
@@ -40,6 +45,35 @@ namespace VehicleParts.API.Controllers
                 .ToListAsync();
 
             return Ok(parts);
+        }
+
+        [HttpPost("purchases")]
+        public async Task<ActionResult<CustomerOwnSalesInvoiceDto>> CreatePurchase(
+            [FromBody] CreateCustomerPurchaseDto request)
+        {
+            var customer = await GetCurrentCustomerAsync();
+            if (customer == null)
+            {
+                return Unauthorized(new { message = "Customer account was not found for the current user." });
+            }
+
+            if (request.Items == null || request.Items.Count == 0)
+            {
+                return BadRequest(new { message = "At least one part is required to complete a purchase." });
+            }
+
+            try
+            {
+                var invoice = await _salesInvoiceService.CreateCustomerPurchaseAsync(
+                    customer.CustomerID,
+                    request);
+
+                return CreatedAtAction(nameof(GetHistory), invoice);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         [HttpPost("appointments")]

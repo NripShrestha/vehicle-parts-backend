@@ -54,6 +54,13 @@ namespace VehicleParts.API.DTOs
         public string? ImageUrl { get; set; }
     }
 
+    public class CreateCustomerPurchaseDto
+    {
+        public string PaymentStatus { get; set; } = "Paid";
+        public decimal CreditAmount { get; set; }
+        public List<CreateSalesInvoiceItemDto> Items { get; set; } = new();
+    }
+
     public class CreatePartRequestDto
     {
         [Required]
