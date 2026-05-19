@@ -69,5 +69,27 @@ namespace VehicleParts.API.Controllers
                 return StatusCode(500, $"Internal server error: {ex.Message}");
             }
         }
+
+        [HttpGet]
+        public async Task<IActionResult> GetPurchaseInvoices()
+        {
+            var invoices = await _context.PurchaseInvoices
+                .Include(pi => pi.Items)
+                .ThenInclude(i => i.Part)
+                .Include(pi => pi.Vendor)
+                .ToListAsync();
+
+            var result = invoices.Select(inv => new
+            {
+                inv.PurchaseInvoiceID,
+                inv.VendorID,
+                VendorName = inv.Vendor?.VendorName,
+                inv.PurchaseDate,
+                inv.TotalCost,
+                ItemsCount = inv.Items.Count
+            });
+
+            return Ok(result);
+        }
     }
 }

@@ -59,13 +59,25 @@ namespace VehicleParts.API.DTOs
         public DateTime ReviewDate { get; set; }
     }
 
+    public class CreateVehicleDto
+    {
+        [Required]
+        public string VehicleNumber { get; set; } = string.Empty;
+        public string Brand { get; set; } = string.Empty;
+        public string Model { get; set; } = string.Empty;
+        public int Year { get; set; }
+    }
+
     public class CustomerOwnHistoryDto
     {
         public int CustomerID { get; set; }
         public string FullName { get; set; } = string.Empty;
+        public string CustomerType { get; set; } = string.Empty;
+        public decimal CreditBalance { get; set; }
         public int TotalPurchases { get; set; }
         public decimal TotalSpent { get; set; }
         public int TotalAppointments { get; set; }
+        public List<CustomerHistoryVehicleDto> Vehicles { get; set; } = new();
         public List<CustomerOwnSalesInvoiceDto> PurchaseHistory { get; set; } = new();
         public List<AppointmentDto> ServiceHistory { get; set; } = new();
         public List<PartRequestDto> PartRequests { get; set; } = new();

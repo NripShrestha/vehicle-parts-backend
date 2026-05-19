@@ -19,6 +19,28 @@ namespace VehicleParts.API.Controllers
             _context = context;
         }
 
+        [HttpGet]
+        public async Task<IActionResult> GetAll()
+        {
+            var results = await _context.Customers
+                .Include(c => c.User)
+                .Select(c => new {
+                    c.CustomerID,
+                    FullName = c.User != null ? c.User.FullName : string.Empty,
+                    Email = c.User != null ? c.User.Email : string.Empty,
+                    PhoneNumber = c.User != null ? c.User.PhoneNumber : null,
+                    c.CustomerType,
+                    c.CreditBalance,
+                    Vehicles = _context.Vehicles
+                        .Where(v => v.CustomerID == c.CustomerID)
+                        .Select(v => new { v.Brand, v.Model, v.VehicleNumber })
+                        .ToList()
+                })
+                .ToListAsync();
+
+            return Ok(results);
+        }
+
         // FEATURE F10: Search Customers
         // Search by: Name, Phone, ID, or Vehicle Plate
         [HttpGet("search")]
@@ -126,14 +148,6 @@ namespace VehicleParts.API.Controllers
                 .OrderByDescending(invoice => invoice.InvoiceDate)
                 .ToListAsync();
 
-            if (salesHistory.Count == 0)
-            {
-                return NotFound(new
-                {
-                    message = "Customer history is not available yet. It can only be viewed after Sales creates an invoice for this customer."
-                });
-            }
-
             var response = new CustomerHistoryDto
             {
                 CustomerID = customer.CustomerID,
@@ -144,7 +158,7 @@ namespace VehicleParts.API.Controllers
                 CreditBalance = customer.CreditBalance,
                 TotalInvoices = salesHistory.Count,
                 TotalSpent = salesHistory.Sum(invoice => invoice.TotalAmount),
-                LastPurchaseDate = salesHistory.First().InvoiceDate,
+                LastPurchaseDate = salesHistory.Any() ? salesHistory.First().InvoiceDate : null,
                 Vehicles = customer.Vehicles
                     .Select(vehicle => new CustomerHistoryVehicleDto
                     {

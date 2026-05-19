@@ -303,17 +303,94 @@ namespace VehicleParts.API.Controllers
 
             var reviews = customerReviews.Select(MapReview).ToList();
 
+            var vehicles = await _context.Vehicles
+                .AsNoTracking()
+                .Where(v => v.CustomerID == customer.CustomerID)
+                .Select(v => new CustomerHistoryVehicleDto
+                {
+                    VehicleID = v.VehicleID,
+                    VehicleNumber = v.VehicleNumber,
+                    Brand = v.Brand,
+                    Model = v.Model,
+                    Year = v.Year
+                })
+                .ToListAsync();
+
             return Ok(new CustomerOwnHistoryDto
             {
                 CustomerID = customer.CustomerID,
                 FullName = customer.User?.FullName ?? string.Empty,
+                CustomerType = customer.CustomerType,
+                CreditBalance = customer.CreditBalance,
                 TotalPurchases = purchaseHistory.Count,
                 TotalSpent = purchaseHistory.Sum(i => i.TotalAmount),
                 TotalAppointments = serviceHistory.Count,
+                Vehicles = vehicles,
                 PurchaseHistory = purchaseHistory,
                 ServiceHistory = serviceHistory,
                 PartRequests = partRequests,
                 Reviews = reviews
+            });
+        }
+
+        [HttpGet("vehicles")]
+        public async Task<ActionResult<IEnumerable<CustomerHistoryVehicleDto>>> GetMyVehicles()
+        {
+            var customer = await GetCurrentCustomerAsync();
+            if (customer == null)
+            {
+                return Unauthorized(new { message = "Customer account was not found for the current user." });
+            }
+
+            var vehicles = await _context.Vehicles
+                .AsNoTracking()
+                .Where(v => v.CustomerID == customer.CustomerID)
+                .Select(v => new CustomerHistoryVehicleDto
+                {
+                    VehicleID = v.VehicleID,
+                    VehicleNumber = v.VehicleNumber,
+                    Brand = v.Brand,
+                    Model = v.Model,
+                    Year = v.Year
+                })
+                .ToListAsync();
+
+            return Ok(vehicles);
+        }
+
+        [HttpPost("vehicles")]
+        public async Task<ActionResult<CustomerHistoryVehicleDto>> RegisterVehicle([FromBody] CreateVehicleDto request)
+        {
+            var customer = await GetCurrentCustomerAsync();
+            if (customer == null)
+            {
+                return Unauthorized(new { message = "Customer account was not found for the current user." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.VehicleNumber))
+            {
+                return BadRequest(new { message = "Vehicle number is required." });
+            }
+
+            var vehicle = new Vehicle
+            {
+                CustomerID = customer.CustomerID,
+                VehicleNumber = request.VehicleNumber.Trim(),
+                Brand = request.Brand?.Trim() ?? string.Empty,
+                Model = request.Model?.Trim() ?? string.Empty,
+                Year = request.Year
+            };
+
+            _context.Vehicles.Add(vehicle);
+            await _context.SaveChangesAsync();
+
+            return Ok(new CustomerHistoryVehicleDto
+            {
+                VehicleID = vehicle.VehicleID,
+                VehicleNumber = vehicle.VehicleNumber,
+                Brand = vehicle.Brand,
+                Model = vehicle.Model,
+                Year = vehicle.Year
             });
         }
 
