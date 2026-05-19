@@ -12,6 +12,12 @@ namespace VehicleParts.API.Models
         [ForeignKey("CustomerID")]
         public Customer? Customer { get; set; }
 
+        public int? AppointmentID { get; set; }
+        [ForeignKey("AppointmentID")]
+        public Appointment? Appointment { get; set; }
+
+        public string ServiceType { get; set; } = string.Empty;
+
         [Range(1, 5)]
         public int Rating { get; set; }
         public string Comment { get; set; } = string.Empty;

@@ -60,6 +60,17 @@ namespace VehicleParts.API.Data
             modelBuilder.Entity<Part>()
                 .Property(p => p.ImageUrl)
                 .HasMaxLength(500);
+
+            modelBuilder.Entity<Review>()
+                .HasOne(r => r.Appointment)
+                .WithMany()
+                .HasForeignKey(r => r.AppointmentID)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<Review>()
+                .HasIndex(r => new { r.CustomerID, r.AppointmentID })
+                .IsUnique()
+                .HasFilter("\"AppointmentID\" IS NOT NULL");
         }
     }
 }

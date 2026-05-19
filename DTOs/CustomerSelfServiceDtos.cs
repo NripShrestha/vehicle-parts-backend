@@ -81,6 +81,8 @@ namespace VehicleParts.API.DTOs
         public int Rating { get; set; }
 
         public string Comment { get; set; } = string.Empty;
+
+        public int? AppointmentID { get; set; }
     }
 
     public class ReviewDto
@@ -89,6 +91,47 @@ namespace VehicleParts.API.DTOs
         public int Rating { get; set; }
         public string Comment { get; set; } = string.Empty;
         public DateTime ReviewDate { get; set; }
+        public int? AppointmentID { get; set; }
+        public string ServiceType { get; set; } = string.Empty;
+        public string VehicleName { get; set; } = string.Empty;
+    }
+
+    public class StaffPartRequestDto
+    {
+        public int PartRequestID { get; set; }
+        public int CustomerID { get; set; }
+        public string CustomerName { get; set; } = string.Empty;
+        public string? CustomerEmail { get; set; }
+        public string? CustomerPhone { get; set; }
+        public string RequestedPartName { get; set; } = string.Empty;
+        public DateTime RequestDate { get; set; }
+        public string RequestStatus { get; set; } = string.Empty;
+    }
+
+    public class UpdatePartRequestStatusDto
+    {
+        [Required]
+        public string RequestStatus { get; set; } = string.Empty;
+    }
+
+    public class ServiceReviewAdminDto
+    {
+        public int ReviewID { get; set; }
+        public int CustomerID { get; set; }
+        public string CustomerName { get; set; } = string.Empty;
+        public string? CustomerEmail { get; set; }
+        public int Rating { get; set; }
+        public string Comment { get; set; } = string.Empty;
+        public DateTime ReviewDate { get; set; }
+        public int? AppointmentID { get; set; }
+        public string ServiceType { get; set; } = string.Empty;
+        public string VehicleName { get; set; } = string.Empty;
+    }
+
+    public class UpdateAppointmentStatusDto
+    {
+        [Required]
+        public string AppointmentStatus { get; set; } = string.Empty;
     }
 
     public class CustomerProfileDto

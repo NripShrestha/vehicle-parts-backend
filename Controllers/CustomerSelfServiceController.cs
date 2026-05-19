@@ -258,9 +258,45 @@ namespace VehicleParts.API.Controllers
                 return BadRequest(new { message = "Rating must be between 1 and 5." });
             }
 
+            if (string.IsNullOrWhiteSpace(request.Comment))
+            {
+                return BadRequest(new { message = "Review comment is required." });
+            }
+
+            Appointment? appointment = null;
+            if (request.AppointmentID.HasValue)
+            {
+                appointment = await _context.Appointments
+                    .Include(a => a.Vehicle)
+                    .FirstOrDefaultAsync(a =>
+                        a.AppointmentID == request.AppointmentID.Value &&
+                        a.CustomerID == customer.CustomerID);
+
+                if (appointment == null)
+                {
+                    return BadRequest(new { message = "Selected service appointment was not found." });
+                }
+
+                if (!appointment.AppointmentStatus.Equals("Completed", StringComparison.OrdinalIgnoreCase))
+                {
+                    return BadRequest(new { message = "You can only review completed service appointments." });
+                }
+
+                var alreadyReviewed = await _context.Reviews.AnyAsync(r =>
+                    r.CustomerID == customer.CustomerID &&
+                    r.AppointmentID == appointment.AppointmentID);
+
+                if (alreadyReviewed)
+                {
+                    return BadRequest(new { message = "You have already reviewed this service appointment." });
+                }
+            }
+
             var review = new Review
             {
                 CustomerID = customer.CustomerID,
+                AppointmentID = appointment?.AppointmentID,
+                ServiceType = appointment?.ServiceType ?? string.Empty,
                 Rating = request.Rating,
                 Comment = request.Comment.Trim(),
                 ReviewDate = DateTime.UtcNow
@@ -268,6 +304,11 @@ namespace VehicleParts.API.Controllers
 
             _context.Reviews.Add(review);
             await _context.SaveChangesAsync();
+
+            if (appointment != null)
+            {
+                review.Appointment = appointment;
+            }
 
             return CreatedAtAction(nameof(GetReviews), new { id = review.ReviewID }, MapReview(review));
         }
@@ -283,6 +324,8 @@ namespace VehicleParts.API.Controllers
 
             var reviews = await _context.Reviews
                 .AsNoTracking()
+                .Include(r => r.Appointment)
+                    .ThenInclude(a => a!.Vehicle)
                 .Where(r => r.CustomerID == customer.CustomerID)
                 .OrderByDescending(r => r.ReviewDate)
                 .ToListAsync();
@@ -669,12 +712,18 @@ namespace VehicleParts.API.Controllers
 
         private static ReviewDto MapReview(Review review)
         {
+            var vehicle = review.Appointment?.Vehicle;
             return new ReviewDto
             {
                 ReviewID = review.ReviewID,
                 Rating = review.Rating,
                 Comment = review.Comment,
-                ReviewDate = review.ReviewDate
+                ReviewDate = review.ReviewDate,
+                AppointmentID = review.AppointmentID,
+                ServiceType = review.ServiceType,
+                VehicleName = vehicle == null
+                    ? string.Empty
+                    : $"{vehicle.Brand} {vehicle.Model}".Trim()
             };
         }
     }
