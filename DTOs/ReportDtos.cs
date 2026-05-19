@@ -24,6 +24,17 @@ namespace VehicleParts.API.DTOs
         public decimal TotalSpent { get; set; }
     }
 
+    public class RegularCustomerDto
+    {
+        public int CustomerID { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string PhoneNumber { get; set; } = string.Empty;
+        public int PurchaseCount { get; set; }
+        public decimal TotalSpent { get; set; }
+        public DateTime? LastPurchaseDate { get; set; }
+    }
+
     public class PendingCreditDto
     {
         public int CustomerID { get; set; }

@@ -10,6 +10,8 @@ namespace VehicleParts.API.DTOs
         [Required]
         public int StaffID { get; set; }
 
+        public string PaymentStatus { get; set; } = "Paid";
+        public decimal CreditAmount { get; set; }
         public List<CreateSalesInvoiceItemDto> Items { get; set; } = new();
     }
 
@@ -47,5 +49,13 @@ namespace VehicleParts.API.DTOs
         public int QuantitySold { get; set; }
         public decimal UnitPrice { get; set; }
         public decimal LineTotal { get; set; }
+    }
+
+    public class UpdateSalesInvoicePaymentDto
+    {
+        [Required]
+        public string PaymentStatus { get; set; } = "Paid";
+
+        public decimal CreditAmount { get; set; }
     }
 }

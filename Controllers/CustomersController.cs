@@ -148,6 +148,14 @@ namespace VehicleParts.API.Controllers
                 .OrderByDescending(invoice => invoice.InvoiceDate)
                 .ToListAsync();
 
+            if (!salesHistory.Any())
+            {
+                return NotFound(new
+                {
+                    message = "Customer history is not available yet. It can only be viewed after Sales creates an invoice for this customer."
+                });
+            }
+
             var response = new CustomerHistoryDto
             {
                 CustomerID = customer.CustomerID,

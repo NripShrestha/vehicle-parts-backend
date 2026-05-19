@@ -176,6 +176,35 @@ namespace VehicleParts.API.Controllers
         // =========================================================================
 
         /// <summary>
+        /// Retrieves customers who have made at least two purchases, treating them as regular customers.
+        /// </summary>
+        [HttpGet("regular-customers")]
+        [Authorize(Roles = "Staff,Admin")]
+        public async Task<ActionResult<IEnumerable<RegularCustomerDto>>> GetRegularCustomers()
+        {
+            var regularCustomers = await _context.Customers
+                .Select(c => new RegularCustomerDto
+                {
+                    CustomerID = c.CustomerID,
+                    FullName = c.User != null ? c.User.FullName : string.Empty,
+                    Email = c.User != null ? c.User.Email : string.Empty,
+                    PhoneNumber = c.User != null ? (c.User.PhoneNumber ?? string.Empty) : string.Empty,
+                    PurchaseCount = c.SalesInvoices.Count(),
+                    TotalSpent = c.SalesInvoices.Sum(si => si.TotalAmount),
+                    LastPurchaseDate = c.SalesInvoices
+                        .OrderByDescending(si => si.InvoiceDate)
+                        .Select(si => (DateTime?)si.InvoiceDate)
+                        .FirstOrDefault()
+                })
+                .Where(c => c.PurchaseCount >= 2)
+                .OrderByDescending(c => c.PurchaseCount)
+                .ThenByDescending(c => c.TotalSpent)
+                .ToListAsync();
+
+            return Ok(regularCustomers);
+        }
+
+        /// <summary>
         /// Retrieves a list of customers ranked by their total successful spending (PaymentStatus = Paid).
         /// </summary>
         [HttpGet("top-spenders")]
@@ -191,9 +220,7 @@ namespace VehicleParts.API.Controllers
                     CustomerID = c.CustomerID,
                     FullName = c.User != null ? c.User.FullName : string.Empty,
                     Email = c.User != null ? c.User.Email : string.Empty,
-                    TotalSpent = c.SalesInvoices
-                        .Where(si => si.PaymentStatus == "Paid")
-                        .Sum(si => si.TotalAmount)
+                    TotalSpent = c.SalesInvoices.Sum(si => si.TotalAmount)
                 })
                 .Where(c => c.TotalSpent > 0)
                 .OrderByDescending(c => c.TotalSpent)
@@ -288,7 +315,7 @@ namespace VehicleParts.API.Controllers
             var overdueInvoices = await _context.SalesInvoices
                 .Include(si => si.Customer)
                     .ThenInclude(c => c!.User)
-                .Where(si => si.PaymentStatus == "Unpaid" && si.InvoiceDate < oneMonthAgo)
+                .Where(si => si.CreditAmount > 0 && si.PaymentStatus != "Paid" && si.InvoiceDate < oneMonthAgo)
                 .ToListAsync();
 
             int overdueEmailsSent = 0;
@@ -311,7 +338,7 @@ namespace VehicleParts.API.Controllers
                             <tr>
                                 <th>Invoice ID</th>
                                 <th>Invoice Date</th>
-                                <th>Total Amount</th>
+                                <th>Outstanding Credit</th>
                                 <th>Overdue Duration</th>
                             </tr>
                         </thead>
@@ -324,7 +351,7 @@ namespace VehicleParts.API.Controllers
                         <tr>
                             <td>#INV-{inv.SalesInvoiceID:D5}</td>
                             <td>{inv.InvoiceDate.ToShortDateString()}</td>
-                            <td style='font-weight: bold; color: red;'>${inv.TotalAmount:N2}</td>
+                            <td style='font-weight: bold; color: red;'>${inv.CreditAmount:N2}</td>
                             <td>{Math.Floor(duration.TotalDays)} days overdue</td>
                         </tr>";
                 }

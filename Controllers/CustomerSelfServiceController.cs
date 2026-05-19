@@ -234,6 +234,59 @@ namespace VehicleParts.API.Controllers
             return Ok(reviews.Select(MapReview).ToList());
         }
 
+        [HttpGet("profile")]
+        public async Task<ActionResult<CustomerProfileDto>> GetProfile()
+        {
+            var customer = await GetCurrentCustomerAsync();
+            if (customer == null || customer.User == null)
+            {
+                return Unauthorized(new { message = "Customer account was not found for the current user." });
+            }
+
+            return Ok(MapProfile(customer));
+        }
+
+        [HttpPut("profile")]
+        public async Task<ActionResult<CustomerProfileDto>> UpdateProfile([FromBody] UpdateCustomerProfileDto request)
+        {
+            var customer = await GetCurrentTrackedCustomerAsync();
+            if (customer == null || customer.User == null)
+            {
+                return Unauthorized(new { message = "Customer account was not found for the current user." });
+            }
+
+            var fullName = request.FullName.Trim();
+            var email = request.Email.Trim();
+
+            if (string.IsNullOrWhiteSpace(fullName))
+            {
+                return BadRequest(new { message = "Full name is required." });
+            }
+
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return BadRequest(new { message = "Email is required." });
+            }
+
+            var emailExists = await _context.Users.AnyAsync(u =>
+                u.UserID != customer.UserID &&
+                u.Email.ToLower() == email.ToLower());
+
+            if (emailExists)
+            {
+                return BadRequest(new { message = "Email is already registered to another account." });
+            }
+
+            customer.User.FullName = fullName;
+            customer.User.Email = email;
+            customer.User.PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber) ? null : request.PhoneNumber.Trim();
+            customer.User.Address = string.IsNullOrWhiteSpace(request.Address) ? null : request.Address.Trim();
+
+            await _context.SaveChangesAsync();
+
+            return Ok(MapProfile(customer));
+        }
+
         [HttpGet("history")]
         public async Task<ActionResult<CustomerOwnHistoryDto>> GetHistory()
         {
@@ -372,10 +425,20 @@ namespace VehicleParts.API.Controllers
                 return BadRequest(new { message = "Vehicle number is required." });
             }
 
+            var vehicleNumber = request.VehicleNumber.Trim();
+            var vehicleExists = await _context.Vehicles.AnyAsync(v =>
+                v.CustomerID == customer.CustomerID &&
+                v.VehicleNumber.ToLower() == vehicleNumber.ToLower());
+
+            if (vehicleExists)
+            {
+                return BadRequest(new { message = "This vehicle number is already registered for the current customer." });
+            }
+
             var vehicle = new Vehicle
             {
                 CustomerID = customer.CustomerID,
-                VehicleNumber = request.VehicleNumber.Trim(),
+                VehicleNumber = vehicleNumber,
                 Brand = request.Brand?.Trim() ?? string.Empty,
                 Model = request.Model?.Trim() ?? string.Empty,
                 Year = request.Year
@@ -384,20 +447,90 @@ namespace VehicleParts.API.Controllers
             _context.Vehicles.Add(vehicle);
             await _context.SaveChangesAsync();
 
-            return Ok(new CustomerHistoryVehicleDto
+            return Ok(MapVehicle(vehicle));
+        }
+
+        [HttpPut("vehicles/{id}")]
+        public async Task<ActionResult<CustomerHistoryVehicleDto>> UpdateVehicle(int id, [FromBody] UpdateVehicleDto request)
+        {
+            var customer = await GetCurrentTrackedCustomerAsync();
+            if (customer == null)
             {
-                VehicleID = vehicle.VehicleID,
-                VehicleNumber = vehicle.VehicleNumber,
-                Brand = vehicle.Brand,
-                Model = vehicle.Model,
-                Year = vehicle.Year
-            });
+                return Unauthorized(new { message = "Customer account was not found for the current user." });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.VehicleNumber))
+            {
+                return BadRequest(new { message = "Vehicle number is required." });
+            }
+
+            var vehicle = await _context.Vehicles
+                .FirstOrDefaultAsync(v => v.VehicleID == id && v.CustomerID == customer.CustomerID);
+
+            if (vehicle == null)
+            {
+                return NotFound(new { message = $"Vehicle with ID {id} was not found." });
+            }
+
+            var vehicleNumber = request.VehicleNumber.Trim();
+            var duplicateVehicle = await _context.Vehicles.AnyAsync(v =>
+                v.VehicleID != id &&
+                v.CustomerID == customer.CustomerID &&
+                v.VehicleNumber.ToLower() == vehicleNumber.ToLower());
+
+            if (duplicateVehicle)
+            {
+                return BadRequest(new { message = "This vehicle number is already registered for the current customer." });
+            }
+
+            vehicle.VehicleNumber = vehicleNumber;
+            vehicle.Brand = request.Brand?.Trim() ?? string.Empty;
+            vehicle.Model = request.Model?.Trim() ?? string.Empty;
+            vehicle.Year = request.Year;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(MapVehicle(vehicle));
+        }
+
+        [HttpDelete("vehicles/{id}")]
+        public async Task<IActionResult> DeleteVehicle(int id)
+        {
+            var customer = await GetCurrentTrackedCustomerAsync();
+            if (customer == null)
+            {
+                return Unauthorized(new { message = "Customer account was not found for the current user." });
+            }
+
+            var vehicle = await _context.Vehicles
+                .FirstOrDefaultAsync(v => v.VehicleID == id && v.CustomerID == customer.CustomerID);
+
+            if (vehicle == null)
+            {
+                return NotFound(new { message = $"Vehicle with ID {id} was not found." });
+            }
+
+            var hasAppointmentHistory = await _context.Appointments
+                .AnyAsync(a => a.VehicleID == id);
+
+            if (hasAppointmentHistory)
+            {
+                return BadRequest(new
+                {
+                    message = "Vehicle cannot be deleted because it already has appointment history. Keep it to preserve service records."
+                });
+            }
+
+            _context.Vehicles.Remove(vehicle);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Vehicle deleted successfully." });
         }
 
         private async Task<Customer?> GetCurrentCustomerAsync()
         {
-            var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (!int.TryParse(userIdValue, out var userId))
+            var userId = GetCurrentUserId();
+            if (userId == null)
             {
                 return null;
             }
@@ -405,7 +538,51 @@ namespace VehicleParts.API.Controllers
             return await _context.Customers
                 .AsNoTracking()
                 .Include(c => c.User)
-                .FirstOrDefaultAsync(c => c.UserID == userId);
+                .FirstOrDefaultAsync(c => c.UserID == userId.Value);
+        }
+
+        private async Task<Customer?> GetCurrentTrackedCustomerAsync()
+        {
+            var userId = GetCurrentUserId();
+            if (userId == null)
+            {
+                return null;
+            }
+
+            return await _context.Customers
+                .Include(c => c.User)
+                .FirstOrDefaultAsync(c => c.UserID == userId.Value);
+        }
+
+        private int? GetCurrentUserId()
+        {
+            var userIdValue = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            return int.TryParse(userIdValue, out var userId) ? userId : null;
+        }
+
+        private static CustomerProfileDto MapProfile(Customer customer)
+        {
+            return new CustomerProfileDto
+            {
+                FullName = customer.User?.FullName ?? string.Empty,
+                Email = customer.User?.Email ?? string.Empty,
+                PhoneNumber = customer.User?.PhoneNumber,
+                Address = customer.User?.Address,
+                CustomerType = customer.CustomerType,
+                CreditBalance = customer.CreditBalance
+            };
+        }
+
+        private static CustomerHistoryVehicleDto MapVehicle(Vehicle vehicle)
+        {
+            return new CustomerHistoryVehicleDto
+            {
+                VehicleID = vehicle.VehicleID,
+                VehicleNumber = vehicle.VehicleNumber,
+                Brand = vehicle.Brand,
+                Model = vehicle.Model,
+                Year = vehicle.Year
+            };
         }
 
         private static AppointmentDto MapAppointment(Appointment appointment, Vehicle? vehicle)

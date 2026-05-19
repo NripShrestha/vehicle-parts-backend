@@ -7,6 +7,7 @@ namespace VehicleParts.API.Services
 {
     public class SalesInvoiceService : ISalesInvoiceService
     {
+        private static readonly string[] AllowedPaymentStatuses = { "Paid", "Partial", "Unpaid" };
         private readonly ApplicationDbContext _context;
         private readonly IEmailService _emailService;
 
@@ -18,12 +19,22 @@ namespace VehicleParts.API.Services
 
         public async Task<SalesInvoiceDto> CreateInvoiceAsync(CreateSalesInvoiceDto createDto)
         {
+            if (createDto.Items == null || createDto.Items.Count == 0)
+            {
+                throw new Exception("At least one invoice item is required.");
+            }
+
+            var customer = await _context.Customers.FindAsync(createDto.CustomerID);
+            if (customer == null) throw new Exception($"Customer with ID {createDto.CustomerID} not found.");
+
+            var staffExists = await _context.Staffs.AnyAsync(staff => staff.StaffID == createDto.StaffID);
+            if (!staffExists) throw new Exception($"Staff with ID {createDto.StaffID} not found.");
+
             var invoice = new SalesInvoice
             {
                 CustomerID = createDto.CustomerID,
                 StaffID = createDto.StaffID,
-                InvoiceDate = DateTime.UtcNow,
-                PaymentStatus = "Paid" // Default for now
+                InvoiceDate = DateTime.UtcNow
             };
 
             decimal subtotal = 0;
@@ -45,11 +56,9 @@ namespace VehicleParts.API.Services
                     LineTotal = lineTotal
                 });
 
-                // Update stock level
                 part.StockQuantity -= itemDto.Quantity;
             }
 
-            // Apply Loyalty Program Discount: 10% if > 5000
             if (subtotal > 5000)
             {
                 invoice.DiscountAmount = subtotal * 0.10m;
@@ -58,17 +67,24 @@ namespace VehicleParts.API.Services
             invoice.Subtotal = subtotal;
             invoice.TotalAmount = subtotal - invoice.DiscountAmount;
 
+            var paymentDetails = ResolvePaymentDetails(createDto.PaymentStatus, createDto.CreditAmount, invoice.TotalAmount);
+            invoice.PaymentStatus = paymentDetails.PaymentStatus;
+            invoice.CreditAmount = paymentDetails.CreditAmount;
+
+            if (invoice.CreditAmount > 0)
+            {
+                customer.CreditBalance += invoice.CreditAmount;
+            }
+
             _context.SalesInvoices.Add(invoice);
             await _context.SaveChangesAsync();
 
-            // Automatically send the invoice email to the customer
             try
             {
                 await SendInvoiceEmailAsync(invoice.SalesInvoiceID);
             }
             catch (Exception ex)
             {
-                // Log the exception but do not fail the invoice transaction itself
                 Console.WriteLine($"[EMAIL ERROR] Automatic invoice email failed: {ex.Message}");
             }
 
@@ -106,6 +122,37 @@ namespace VehicleParts.API.Services
             return invoices.Select(MapToDto).ToList();
         }
 
+        public async Task<SalesInvoiceDto?> UpdatePaymentStatusAsync(int id, UpdateSalesInvoicePaymentDto updateDto)
+        {
+            var invoice = await _context.SalesInvoices
+                .Include(i => i.Items)
+                    .ThenInclude(item => item.Part)
+                .Include(i => i.Customer)
+                    .ThenInclude(c => c!.User)
+                .Include(i => i.Staff)
+                    .ThenInclude(s => s!.User)
+                .FirstOrDefaultAsync(i => i.SalesInvoiceID == id);
+
+            if (invoice == null) return null;
+            if (invoice.Customer == null) throw new Exception("Invoice customer was not found.");
+
+            var paymentDetails = ResolvePaymentDetails(updateDto.PaymentStatus, updateDto.CreditAmount, invoice.TotalAmount);
+            var updatedCreditBalance = invoice.Customer.CreditBalance - invoice.CreditAmount + paymentDetails.CreditAmount;
+
+            if (updatedCreditBalance < 0)
+            {
+                throw new Exception("Customer credit balance would become negative.");
+            }
+
+            invoice.Customer.CreditBalance = updatedCreditBalance;
+            invoice.PaymentStatus = paymentDetails.PaymentStatus;
+            invoice.CreditAmount = paymentDetails.CreditAmount;
+
+            await _context.SaveChangesAsync();
+
+            return MapToDto(invoice);
+        }
+
         public async Task<bool> SendInvoiceEmailAsync(int invoiceId)
         {
             var invoice = await _context.SalesInvoices
@@ -123,8 +170,8 @@ namespace VehicleParts.API.Services
             string customerName = invoice.Customer.User.FullName;
             string staffName = invoice.Staff?.User?.FullName ?? "Staff Member";
             string dateString = invoice.InvoiceDate.ToString("MMMM dd, yyyy HH:mm");
+            decimal amountPaidNow = invoice.TotalAmount - invoice.CreditAmount;
 
-            // Format table rows
             string itemsRowsHtml = "";
             foreach (var item in invoice.Items)
             {
@@ -138,7 +185,6 @@ namespace VehicleParts.API.Services
                 </tr>";
             }
 
-            // Payment status badge
             string paymentStatusColor = invoice.PaymentStatus.Equals("Paid", StringComparison.OrdinalIgnoreCase) ? "#10b981" : "#f59e0b";
             string paymentStatusBg = invoice.PaymentStatus.Equals("Paid", StringComparison.OrdinalIgnoreCase) ? "#ecfdf5" : "#fffbeb";
             string paymentStatusHtml = $@"
@@ -146,7 +192,6 @@ namespace VehicleParts.API.Services
                     {invoice.PaymentStatus}
                 </span>";
 
-            // Loyalty Program discount highlight
             string discountSectionHtml = "";
             if (invoice.DiscountAmount > 0)
             {
@@ -156,6 +201,30 @@ namespace VehicleParts.API.Services
                     <span>-${invoice.DiscountAmount:N2}</span>
                 </div>";
             }
+
+            string creditSectionHtml = "";
+            if (invoice.CreditAmount > 0)
+            {
+                creditSectionHtml = $@"
+                    <div style=""display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; color: #b45309;"">
+                        <span>Outstanding Credit:</span>
+                        <span>${invoice.CreditAmount:N2}</span>
+                    </div>";
+            }
+
+            string totalLabel = invoice.PaymentStatus switch
+            {
+                "Unpaid" => "Amount Due",
+                "Partial" => "Paid Now",
+                _ => "Total Paid"
+            };
+
+            decimal totalValue = invoice.PaymentStatus switch
+            {
+                "Unpaid" => invoice.TotalAmount,
+                "Partial" => amountPaidNow,
+                _ => invoice.TotalAmount
+            };
 
             string htmlBody = $@"<!DOCTYPE html>
 <html>
@@ -176,8 +245,6 @@ namespace VehicleParts.API.Services
 </head>
 <body style=""background-color: #f8fafc; padding: 20px; font-family: 'Inter', sans-serif;"">
     <div style=""max-width: 650px; margin: 0 auto; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0;"">
-        
-        <!-- Header -->
         <div style=""background-color: #1e293b; padding: 32px; text-align: center; border-bottom: 4px solid #3b82f6;"">
             <h1 style=""margin: 0; font-size: 24px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; text-transform: uppercase;"">
                 <span style=""color: #3b82f6;"">AutoPart</span> Inventory
@@ -186,7 +253,6 @@ namespace VehicleParts.API.Services
         </div>
 
         <div style=""padding: 32px;"">
-            <!-- Invoice Meta Block -->
             <div style=""display: flex; justify-content: space-between; border-bottom: 2px solid #f1f5f9; padding-bottom: 24px; margin-bottom: 24px;"">
                 <div>
                     <span style=""font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;"">Invoice Number</span>
@@ -198,7 +264,6 @@ namespace VehicleParts.API.Services
                 </div>
             </div>
 
-            <!-- Billing Grid -->
             <div style=""display: flex; justify-content: space-between; margin-bottom: 32px; gap: 20px;"">
                 <div style=""flex: 1;"">
                     <h4 style=""margin: 0 0 8px 0; font-size: 12px; font-weight: 700; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px;"">Billed To:</h4>
@@ -213,7 +278,6 @@ namespace VehicleParts.API.Services
                 </div>
             </div>
 
-            <!-- Items Table -->
             <table style=""width: 100%; border-collapse: collapse; margin-bottom: 32px;"">
                 <thead>
                     <tr style=""background-color: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 2px solid #cbd5e1;"">
@@ -228,30 +292,24 @@ namespace VehicleParts.API.Services
                 </tbody>
             </table>
 
-            <!-- Summary Block -->
             <div style=""display: flex; justify-content: flex-end;"">
                 <div style=""width: 100%; max-width: 320px;"">
                     <div style=""display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; color: #475569;"">
                         <span>Subtotal:</span>
                         <span>${invoice.Subtotal:N2}</span>
                     </div>
-                    
-                    {discountSectionHtml}
 
-                    <div style=""display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 14px; color: #475569;"">
-                        <span>Credit Applied:</span>
-                        <span>-${invoice.CreditAmount:N2}</span>
-                    </div>
+                    {discountSectionHtml}
+                    {creditSectionHtml}
 
                     <div style=""border-top: 2px solid #e2e8f0; padding-top: 12px; display: flex; justify-content: space-between; align-items: center;"">
-                        <span style=""font-size: 16px; font-weight: 700; color: #0f172a;"">Total Paid:</span>
-                        <span style=""font-size: 22px; font-weight: 800; color: #1e293b;"">${invoice.TotalAmount:N2}</span>
+                        <span style=""font-size: 16px; font-weight: 700; color: #0f172a;"">{totalLabel}:</span>
+                        <span style=""font-size: 22px; font-weight: 800; color: #1e293b;"">${totalValue:N2}</span>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Footer -->
         <div style=""background-color: #f8fafc; padding: 24px; text-align: center; border-top: 1px solid #e2e8f0; font-size: 13px; color: #64748b;"">
             <p style=""margin: 0; font-weight: 600; color: #475569;"">Thank you for your business!</p>
             <p style=""margin: 4px 0 0 0;"">If you have any questions about this invoice, please contact support.</p>
@@ -261,9 +319,55 @@ namespace VehicleParts.API.Services
 </html>";
 
             string subject = $"Invoice #INV-{invoice.SalesInvoiceID:D5} from AutoPart Inventory";
-            
             await _emailService.SendEmailAsync(customerEmail, subject, htmlBody, invoice.SalesInvoiceID);
             return true;
+        }
+
+        private static (string PaymentStatus, decimal CreditAmount) ResolvePaymentDetails(string paymentStatus, decimal requestedCreditAmount, decimal totalAmount)
+        {
+            if (totalAmount < 0)
+            {
+                throw new Exception("Invoice total amount cannot be negative.");
+            }
+
+            if (requestedCreditAmount < 0)
+            {
+                throw new Exception("Credit amount cannot be negative.");
+            }
+
+            if (requestedCreditAmount > totalAmount)
+            {
+                throw new Exception("Credit amount cannot be greater than the invoice total.");
+            }
+
+            var normalizedStatus = string.IsNullOrWhiteSpace(paymentStatus) ? string.Empty : paymentStatus.Trim();
+            if (string.IsNullOrEmpty(normalizedStatus))
+            {
+                normalizedStatus = requestedCreditAmount switch
+                {
+                    0 => "Paid",
+                    _ when requestedCreditAmount == totalAmount => "Unpaid",
+                    _ => "Partial"
+                };
+            }
+
+            if (!AllowedPaymentStatuses.Contains(normalizedStatus, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new Exception("Payment status must be Paid, Partial, or Unpaid.");
+            }
+
+            normalizedStatus = char.ToUpperInvariant(normalizedStatus[0]) + normalizedStatus[1..].ToLowerInvariant();
+
+            return normalizedStatus switch
+            {
+                "Paid" when requestedCreditAmount == 0 => (normalizedStatus, 0),
+                "Partial" when requestedCreditAmount > 0 && requestedCreditAmount < totalAmount => (normalizedStatus, requestedCreditAmount),
+                "Unpaid" when requestedCreditAmount == 0 || requestedCreditAmount == totalAmount => (normalizedStatus, totalAmount),
+                "Paid" => throw new Exception("Paid invoices cannot have an outstanding credit amount."),
+                "Partial" => throw new Exception("Partial invoices must have a credit amount greater than 0 and less than the invoice total."),
+                "Unpaid" => throw new Exception("Unpaid invoices must leave the full invoice amount as outstanding credit."),
+                _ => throw new Exception("Invalid payment status.")
+            };
         }
 
         private SalesInvoiceDto MapToDto(SalesInvoice invoice)

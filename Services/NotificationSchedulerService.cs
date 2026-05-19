@@ -103,7 +103,7 @@ namespace VehicleParts.API.Services
             var overdueInvoices = await context.SalesInvoices
                 .Include(si => si.Customer)
                     .ThenInclude(c => c!.User)
-                .Where(si => si.PaymentStatus == "Unpaid" && si.InvoiceDate < oneMonthAgo)
+                .Where(si => si.CreditAmount > 0 && si.PaymentStatus != "Paid" && si.InvoiceDate < oneMonthAgo)
                 .ToListAsync();
 
             var groupedInvoices = overdueInvoices
@@ -125,7 +125,7 @@ namespace VehicleParts.API.Services
                             <tr>
                                 <th>Invoice ID</th>
                                 <th>Invoice Date</th>
-                                <th>Total Amount</th>
+                                <th>Outstanding Credit</th>
                             </tr>
                         </thead>
                         <tbody>";
@@ -136,7 +136,7 @@ namespace VehicleParts.API.Services
                         <tr>
                             <td>#INV-{inv.SalesInvoiceID:D5}</td>
                             <td>{inv.InvoiceDate.ToShortDateString()}</td>
-                            <td style='font-weight: bold; color: red;'>${inv.TotalAmount:N2}</td>
+                            <td style='font-weight: bold; color: red;'>${inv.CreditAmount:N2}</td>
                         </tr>";
                 }
 

@@ -48,6 +48,26 @@ namespace VehicleParts.API.Controllers
             return Ok(invoices);
         }
 
+        [HttpPut("{id}/payment")]
+        [Authorize(Roles = "Admin,Staff")]
+        public async Task<ActionResult<SalesInvoiceDto>> UpdatePaymentStatus(int id, UpdateSalesInvoicePaymentDto updateDto)
+        {
+            try
+            {
+                var invoice = await _salesInvoiceService.UpdatePaymentStatusAsync(id, updateDto);
+                if (invoice == null)
+                {
+                    return NotFound(new { message = $"Sales invoice with ID {id} was not found." });
+                }
+
+                return Ok(invoice);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
         [HttpPost("{id}/send-email")]
         [Authorize(Roles = "Admin,Staff")]
         public async Task<IActionResult> SendInvoiceEmail(int id)
