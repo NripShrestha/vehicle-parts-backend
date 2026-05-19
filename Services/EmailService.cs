@@ -1,102 +1,137 @@
 using System.Net;
 using System.Net.Mail;
+using Microsoft.Extensions.Options;
 
 namespace VehicleParts.API.Services
 {
     public class EmailService : IEmailService
     {
-        private readonly IConfiguration _configuration;
+        private readonly EmailSettingsOptions _settings;
         private readonly ILogger<EmailService> _logger;
+        private readonly string _sentEmailsFolder;
 
-        public EmailService(IConfiguration configuration, ILogger<EmailService> logger)
+        public EmailService(
+            IOptions<EmailSettingsOptions> options,
+            ILogger<EmailService> logger,
+            IWebHostEnvironment environment)
         {
-            _configuration = configuration;
+            _settings = options.Value;
             _logger = logger;
+            _sentEmailsFolder = Path.Combine(environment.ContentRootPath, "SentEmails");
         }
 
-        public async Task SendEmailAsync(string toEmail, string subject, string htmlMessage, int? invoiceId = null)
-        {
-            var emailSettings = _configuration.GetSection("EmailSettings");
-            bool useMock = emailSettings.GetValue<bool>("UseMock", true);
-            string smtpServer = emailSettings.GetValue<string>("SmtpServer") ?? string.Empty;
-            int smtpPort = emailSettings.GetValue<int>("SmtpPort", 587);
-            string senderName = emailSettings.GetValue<string>("SenderName") ?? "Vehicle Parts API";
-            string senderEmail = emailSettings.GetValue<string>("SenderEmail") ?? "noreply@vehicleparts.com";
-            string username = emailSettings.GetValue<string>("Username") ?? string.Empty;
-            string password = emailSettings.GetValue<string>("Password") ?? string.Empty;
-            bool enableSsl = emailSettings.GetValue<bool>("EnableSsl", true);
+        public EmailSettingsOptions GetEffectiveSettings() => _settings;
 
-            // Fallback to mock mode if SMTP settings are not fully specified
-            if (string.IsNullOrWhiteSpace(smtpServer) || string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+        public async Task<EmailSendResult> SendEmailAsync(string toEmail, string subject, string htmlMessage, int? invoiceId = null)
+        {
+            if (string.IsNullOrWhiteSpace(toEmail))
             {
-                useMock = true;
+                return EmailSendResult.Failure("Recipient email address is empty.");
             }
 
-            if (useMock)
+            if (_settings.WillUseMock)
             {
-                await SaveMockEmailAsync(toEmail, subject, htmlMessage, invoiceId);
-                return;
+                if (!_settings.UseMock && !_settings.HasSmtpCredentials)
+                {
+                    _logger.LogWarning(
+                        "Email to {ToEmail} saved locally: SMTP Username/Password are not configured. Set EmailSettings in appsettings or user-secrets.",
+                        toEmail);
+                }
+                else
+                {
+                    _logger.LogInformation(
+                        "Email to {ToEmail} saved locally (UseMock=true). No message was sent to the recipient inbox.",
+                        toEmail);
+                }
+
+                return await SaveMockEmailAsync(toEmail, subject, htmlMessage, invoiceId);
             }
 
             try
             {
+                // Gmail and most providers require the From address to match the authenticated account.
+                var fromEmail = string.IsNullOrWhiteSpace(_settings.SenderEmail)
+                    ? _settings.Username.Trim()
+                    : _settings.SenderEmail.Trim();
+
+                if (!fromEmail.Equals(_settings.Username.Trim(), StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning(
+                        "SenderEmail ({SenderEmail}) differs from SMTP Username ({Username}). Using Username as From address to avoid provider rejection.",
+                        fromEmail,
+                        _settings.Username);
+                    fromEmail = _settings.Username.Trim();
+                }
+
                 using var mailMessage = new MailMessage
                 {
-                    From = new MailAddress(senderEmail, senderName),
+                    From = new MailAddress(fromEmail, _settings.SenderName),
                     Subject = subject,
                     Body = htmlMessage,
                     IsBodyHtml = true
                 };
-                mailMessage.To.Add(toEmail);
+                mailMessage.To.Add(toEmail.Trim());
 
-                using var smtpClient = new SmtpClient(smtpServer, smtpPort)
+                using var smtpClient = new SmtpClient(_settings.SmtpServer.Trim(), _settings.SmtpPort)
                 {
-                    Credentials = new NetworkCredential(username, password),
-                    EnableSsl = enableSsl
+                    Credentials = new NetworkCredential(_settings.Username.Trim(), _settings.Password),
+                    EnableSsl = _settings.EnableSsl
                 };
 
-                _logger.LogInformation("Attempting to send email to {ToEmail} via {SmtpServer}...", toEmail, smtpServer);
+                _logger.LogInformation(
+                    "Sending email to {ToEmail} via {SmtpServer}:{Port}...",
+                    toEmail,
+                    _settings.SmtpServer,
+                    _settings.SmtpPort);
+
                 await smtpClient.SendMailAsync(mailMessage);
-                _logger.LogInformation("Email sent successfully to {ToEmail}.", toEmail);
+
+                _logger.LogInformation("Email delivered via SMTP to {ToEmail}.", toEmail);
+                return EmailSendResult.SmtpSuccess();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send email via SMTP to {ToEmail}. Falling back to local file save.", toEmail);
-                // Fallback to saving locally so the test run is fully visible
-                await SaveMockEmailAsync(toEmail, subject, htmlMessage, invoiceId);
+                _logger.LogError(ex, "SMTP send failed for {ToEmail}. Saving a local copy instead.", toEmail);
+                var mockResult = await SaveMockEmailAsync(toEmail, subject, htmlMessage, invoiceId);
+                if (mockResult.Success)
+                {
+                    return EmailSendResult.Failure(
+                        $"SMTP failed ({ex.Message}). A copy was saved locally at: {mockResult.MockFilePath}");
+                }
+
+                return EmailSendResult.Failure($"SMTP failed: {ex.Message}");
             }
         }
 
-        private async Task SaveMockEmailAsync(string toEmail, string subject, string htmlMessage, int? invoiceId = null)
+        private async Task<EmailSendResult> SaveMockEmailAsync(string toEmail, string subject, string htmlMessage, int? invoiceId = null)
         {
             try
             {
-                var folderPath = Path.Combine(Directory.GetCurrentDirectory(), "SentEmails");
-                if (!Directory.Exists(folderPath))
+                if (!Directory.Exists(_sentEmailsFolder))
                 {
-                    Directory.CreateDirectory(folderPath);
+                    Directory.CreateDirectory(_sentEmailsFolder);
                 }
 
                 string idString = invoiceId.HasValue ? $"_{invoiceId.Value}" : "";
                 string fileName = $"Invoice{idString}_{DateTime.UtcNow:yyyyMMdd_HHmmss}.html";
-                var filePath = Path.Combine(folderPath, fileName);
+                var filePath = Path.Combine(_sentEmailsFolder, fileName);
 
-                // Add a small developer debug header at the top of the mock file
-                var debugMessage = $@"<!-- DEVELOPER MOCK EMAIL INFO
+                var debugMessage = $@"<!-- DEVELOPER MOCK EMAIL (not delivered to inbox)
 To: {toEmail}
 Subject: {subject}
-Timestamp: {DateTime.UtcNow}
+Timestamp: {DateTime.UtcNow:O}
 -->
 " + htmlMessage;
 
                 await File.WriteAllTextAsync(filePath, debugMessage);
-                
-                _logger.LogInformation("[MOCK EMAIL] Local email mock file generated successfully: {FilePath}", filePath);
-                Console.WriteLine($"\n[MOCK EMAIL] Saved email for {toEmail} to file: {filePath}\n");
+
+                _logger.LogInformation("[MOCK EMAIL] Saved to {FilePath}", filePath);
+                return EmailSendResult.MockSuccess(filePath);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to write mock email file.");
+                return EmailSendResult.Failure($"Could not save mock email: {ex.Message}");
             }
         }
     }

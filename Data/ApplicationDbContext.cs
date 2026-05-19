@@ -56,6 +56,10 @@ namespace VehicleParts.API.Data
                 .WithMany(c => c.SalesInvoices)
                 .HasForeignKey(si => si.CustomerID)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Part>()
+                .Property(p => p.ImageUrl)
+                .HasMaxLength(500);
         }
     }
 }

@@ -72,9 +72,29 @@ namespace VehicleParts.API.Controllers
         [Authorize(Roles = "Admin,Staff")]
         public async Task<IActionResult> SendInvoiceEmail(int id)
         {
-            var success = await _salesInvoiceService.SendInvoiceEmailAsync(id);
-            if (!success) return BadRequest(new { message = "Failed to send email. Ensure customer has a valid email address." });
-            return Ok(new { message = "Invoice email sent successfully." });
+            var result = await _salesInvoiceService.SendInvoiceEmailAsync(id);
+            if (!result.Success)
+            {
+                return BadRequest(new { message = result.Message });
+            }
+
+            if (result.DeliveryMode == EmailDeliveryMode.Mock)
+            {
+                return Ok(new
+                {
+                    message = result.Message,
+                    deliveredToInbox = false,
+                    deliveryMode = "mock",
+                    mockFilePath = result.MockFilePath
+                });
+            }
+
+            return Ok(new
+            {
+                message = result.Message,
+                deliveredToInbox = true,
+                deliveryMode = "smtp"
+            });
         }
     }
 }

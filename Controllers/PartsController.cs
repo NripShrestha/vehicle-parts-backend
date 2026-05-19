@@ -1,8 +1,9 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using VehicleParts.API.Data; // Ensure this matches your namespace
-using VehicleParts.API.Models; // Ensure this matches your namespace
+using VehicleParts.API.Data;
+using VehicleParts.API.DTOs;
+using VehicleParts.API.Models;
 
 namespace VehicleParts.API.Controllers
 {
@@ -20,7 +21,9 @@ namespace VehicleParts.API.Controllers
         private static readonly HashSet<string> AllowedImageContentTypes = new(StringComparer.OrdinalIgnoreCase)
         {
             "image/png",
-            "image/jpeg"
+            "image/jpeg",
+            "image/jpg",
+            "application/octet-stream"
         };
 
         private readonly ApplicationDbContext _context;
@@ -32,11 +35,6 @@ namespace VehicleParts.API.Controllers
             _environment = environment;
         }
 
-        // --------------------------------------------------------
-        // FEATURE: View Parts Catalog
-        // --------------------------------------------------------
-        
-        // GET: api/Parts
         [HttpGet]
         [Authorize(Roles = "Admin,Staff")]
         public async Task<ActionResult<IEnumerable<Part>>> GetParts()
@@ -45,13 +43,11 @@ namespace VehicleParts.API.Controllers
             return Ok(parts);
         }
 
-        // GET: api/Parts/5
         [HttpGet("{id}")]
         [Authorize(Roles = "Admin,Staff")]
         public async Task<ActionResult<Part>> GetPart(int id)
         {
             var part = await _context.Parts.FindAsync(id);
-
             if (part == null)
             {
                 return NotFound(new { message = $"Part with ID {id} not found." });
@@ -60,16 +56,11 @@ namespace VehicleParts.API.Controllers
             return Ok(part);
         }
 
-        // --------------------------------------------------------
-        // FEATURE: Admin-Controlled CRUD Operations
-        // --------------------------------------------------------
-
-        // POST: api/Parts
+        /// <summary>Create a part using JSON (no image). Upload image separately via POST /api/Parts/{id}/image.</summary>
         [HttpPost]
-        [Authorize(Roles = "Admin")] // Secured: Only Admin
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Part>> PostPart([FromBody] Part part)
         {
-            // Note: EF Core automatically validates Data Annotations (like [Required], [Range])
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
@@ -79,13 +70,55 @@ namespace VehicleParts.API.Controllers
             _context.Parts.Add(part);
             await _context.SaveChangesAsync();
 
-            // Returns a 201 Created status code with a link to the new resource
             return CreatedAtAction(nameof(GetPart), new { id = part.PartID }, part);
         }
 
-        // PUT: api/Parts/5
+        /// <summary>Create a part with an optional image in one request (multipart/form-data).</summary>
+        [HttpPost("with-image")]
+        [Authorize(Roles = "Admin")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<Part>> CreatePartWithImage([FromForm] CreatePartFormDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            if (!await _context.Vendors.AnyAsync(v => v.VendorID == dto.VendorID))
+            {
+                return BadRequest(new { message = $"Vendor with ID {dto.VendorID} not found." });
+            }
+
+            var part = new Part
+            {
+                VendorID = dto.VendorID,
+                PartName = dto.PartName.Trim(),
+                Category = dto.Category.Trim(),
+                CostPrice = dto.CostPrice,
+                SellingPrice = dto.SellingPrice,
+                StockQuantity = dto.StockQuantity,
+                ReorderLevel = dto.ReorderLevel
+            };
+
+            _context.Parts.Add(part);
+            await _context.SaveChangesAsync();
+
+            if (dto.Image != null)
+            {
+                var uploadResult = await SavePartImageAsync(part, dto.Image);
+                if (uploadResult.Error != null)
+                {
+                    return BadRequest(new { message = uploadResult.Error, part });
+                }
+
+                await _context.SaveChangesAsync();
+            }
+
+            return CreatedAtAction(nameof(GetPart), new { id = part.PartID }, part);
+        }
+
         [HttpPut("{id}")]
-        [Authorize(Roles = "Admin")] // Secured: Only Admin
+        [Authorize(Roles = "Admin")]
         public async Task<ActionResult<Part>> PutPart(int id, [FromBody] Part part)
         {
             if (id != part.PartID)
@@ -117,18 +150,59 @@ namespace VehicleParts.API.Controllers
                 {
                     return NotFound(new { message = $"Part with ID {id} not found." });
                 }
-                else
-                {
-                    throw; // Re-throw if it's a genuine database error
-                }
+
+                throw;
             }
 
             return Ok(existingPart);
         }
 
-        // POST: api/Parts/5/image
+        /// <summary>Update part fields and optionally replace the image (multipart/form-data).</summary>
+        [HttpPut("{id}/with-image")]
+        [Authorize(Roles = "Admin")]
+        [Consumes("multipart/form-data")]
+        public async Task<ActionResult<Part>> UpdatePartWithImage(int id, [FromForm] UpdatePartFormDto dto)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var existingPart = await _context.Parts.FindAsync(id);
+            if (existingPart == null)
+            {
+                return NotFound(new { message = $"Part with ID {id} not found." });
+            }
+
+            if (!await _context.Vendors.AnyAsync(v => v.VendorID == dto.VendorID))
+            {
+                return BadRequest(new { message = $"Vendor with ID {dto.VendorID} not found." });
+            }
+
+            existingPart.VendorID = dto.VendorID;
+            existingPart.PartName = dto.PartName.Trim();
+            existingPart.Category = dto.Category.Trim();
+            existingPart.CostPrice = dto.CostPrice;
+            existingPart.SellingPrice = dto.SellingPrice;
+            existingPart.StockQuantity = dto.StockQuantity;
+            existingPart.ReorderLevel = dto.ReorderLevel;
+
+            if (dto.Image != null)
+            {
+                var uploadResult = await SavePartImageAsync(existingPart, dto.Image);
+                if (uploadResult.Error != null)
+                {
+                    return BadRequest(new { message = uploadResult.Error });
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            return Ok(existingPart);
+        }
+
         [HttpPost("{id}/image")]
         [Authorize(Roles = "Admin")]
+        [Consumes("multipart/form-data")]
         public async Task<ActionResult> UploadPartImage(int id, [FromForm] IFormFile? image)
         {
             var part = await _context.Parts.FindAsync(id);
@@ -137,43 +211,13 @@ namespace VehicleParts.API.Controllers
                 return NotFound(new { message = $"Part with ID {id} not found." });
             }
 
-            var validationError = await ValidateImageAsync(image);
-            if (validationError != null)
+            var uploadResult = await SavePartImageAsync(part, image);
+            if (uploadResult.Error != null)
             {
-                return BadRequest(new { message = validationError });
+                return BadRequest(new { message = uploadResult.Error });
             }
 
-            var extension = Path.GetExtension(image!.FileName).ToLowerInvariant();
-            var uploadRoot = GetPartUploadRoot();
-            Directory.CreateDirectory(uploadRoot);
-
-            var fileName = $"{Guid.NewGuid():N}{extension}";
-            var filePath = GetSafePartImagePath(uploadRoot, fileName);
-            if (filePath == null)
-            {
-                return BadRequest(new { message = "Invalid image file path." });
-            }
-
-            var oldImageUrl = part.ImageUrl;
-
-            await using (var stream = System.IO.File.Create(filePath))
-            {
-                await image.CopyToAsync(stream);
-            }
-
-            part.ImageUrl = $"/uploads/parts/{fileName}";
-
-            try
-            {
-                await _context.SaveChangesAsync();
-            }
-            catch
-            {
-                DeleteFileIfExists(filePath);
-                throw;
-            }
-
-            DeletePartImageFile(oldImageUrl);
+            await _context.SaveChangesAsync();
 
             return Ok(new
             {
@@ -183,8 +227,25 @@ namespace VehicleParts.API.Controllers
             });
         }
 
-        // DELETE: api/Parts/5
-        [HttpDelete("{id}")][Authorize(Roles = "Admin")] // Secured: Only Admin
+        [HttpDelete("{id}/image")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeletePartImage(int id)
+        {
+            var part = await _context.Parts.FindAsync(id);
+            if (part == null)
+            {
+                return NotFound(new { message = $"Part with ID {id} not found." });
+            }
+
+            DeletePartImageFile(part.ImageUrl);
+            part.ImageUrl = null;
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Part image removed.", part });
+        }
+
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> DeletePart(int id)
         {
             var part = await _context.Parts.FindAsync(id);
@@ -201,16 +262,10 @@ namespace VehicleParts.API.Controllers
             return Ok(new { message = "Part deleted successfully." });
         }
 
-        // --------------------------------------------------------
-        // FEATURE: Low Stock Monitoring
-        // Marking Scheme Requirement: "notifies Admin for low stock (<10)"
-        // --------------------------------------------------------
-
-        // GET: api/Parts/low-stock
-        [HttpGet("low-stock")][Authorize(Roles = "Admin,Staff")] // Admin and Staff can monitor stock
+        [HttpGet("low-stock")]
+        [Authorize(Roles = "Admin,Staff")]
         public async Task<ActionResult<IEnumerable<Part>>> GetLowStock()
         {
-            // Fetch parts where stock is less than 10 OR less than their specific ReorderLevel
             var lowStockParts = await _context.Parts
                 .Where(p => p.StockQuantity < 10 || p.StockQuantity <= p.ReorderLevel)
                 .ToListAsync();
@@ -218,17 +273,55 @@ namespace VehicleParts.API.Controllers
             return Ok(lowStockParts);
         }
 
-        // Helper method for the PUT operation
-        private bool PartExists(int id)
+        private bool PartExists(int id) => _context.Parts.Any(e => e.PartID == id);
+
+        private async Task<(string? Error, string? FilePath)> SavePartImageAsync(Part part, IFormFile? image)
         {
-            return _context.Parts.Any(e => e.PartID == id);
+            var validationError = await ValidateImageAsync(image);
+            if (validationError != null)
+            {
+                return (validationError, null);
+            }
+
+            var extension = Path.GetExtension(image!.FileName).ToLowerInvariant();
+            var uploadRoot = GetPartUploadRoot();
+            Directory.CreateDirectory(uploadRoot);
+
+            var fileName = $"{Guid.NewGuid():N}{extension}";
+            var filePath = GetSafePartImagePath(uploadRoot, fileName);
+            if (filePath == null)
+            {
+                return ("Invalid image file path.", null);
+            }
+
+            var oldImageUrl = part.ImageUrl;
+
+            await using (var stream = System.IO.File.Create(filePath))
+            {
+                await image.CopyToAsync(stream);
+            }
+
+            part.ImageUrl = $"/uploads/parts/{fileName}";
+
+            try
+            {
+                DeletePartImageFile(oldImageUrl);
+            }
+            catch
+            {
+                DeleteFileIfExists(filePath);
+                part.ImageUrl = oldImageUrl;
+                throw;
+            }
+
+            return (null, filePath);
         }
 
         private async Task<string?> ValidateImageAsync(IFormFile? image)
         {
             if (image == null)
             {
-                return "Image file is required. Use multipart/form-data with a file field named image.";
+                return "Image file is required. Use multipart/form-data with a file field named 'image'.";
             }
 
             if (image.Length == 0)
@@ -247,7 +340,8 @@ namespace VehicleParts.API.Controllers
                 return "Only PNG, JPG, and JPEG images are allowed.";
             }
 
-            if (string.IsNullOrWhiteSpace(image.ContentType) || !AllowedImageContentTypes.Contains(image.ContentType))
+            if (!string.IsNullOrWhiteSpace(image.ContentType) &&
+                !AllowedImageContentTypes.Contains(image.ContentType))
             {
                 return "Only PNG, JPG, and JPEG images are allowed.";
             }

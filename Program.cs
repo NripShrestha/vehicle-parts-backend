@@ -16,8 +16,10 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 );
 
 // 2. Register Services
+builder.Services.Configure<EmailSettingsOptions>(
+    builder.Configuration.GetSection(EmailSettingsOptions.SectionName));
 builder.Services.AddScoped<JwtService>();
-builder.Services.AddScoped<IEmailService, EmailService>();  // ? add this
+builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ISalesInvoiceService, SalesInvoiceService>();
 builder.Services.AddHostedService<NotificationSchedulerService>();
 
@@ -103,6 +105,24 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+var emailSettings = app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<EmailSettingsOptions>>().Value;
+var startupLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+if (emailSettings.WillUseMock)
+{
+    startupLogger.LogWarning(
+        "Email is in MOCK mode — messages are written to {{ProjectRoot}}/SentEmails/ and are NOT delivered to real inboxes. " +
+        "To send real email: set EmailSettings:UseMock=false and configure Username/Password (Gmail: use an App Password). " +
+        "Example: dotnet user-secrets set \"EmailSettings:Username\" \"you@gmail.com\"");
+}
+else
+{
+    startupLogger.LogInformation(
+        "Email SMTP enabled: {Server}:{Port} as {User}",
+        emailSettings.SmtpServer,
+        emailSettings.SmtpPort,
+        emailSettings.Username);
+}
+
 // Swagger
 if (app.Environment.IsDevelopment())
 {
@@ -114,6 +134,9 @@ app.UseCors("AllowReact");
 app.UseHttpsRedirection();
 
 app.UseStaticFiles();
+
+var partsUploadDir = Path.Combine(app.Environment.WebRootPath ?? Path.Combine(app.Environment.ContentRootPath, "wwwroot"), "uploads", "parts");
+Directory.CreateDirectory(partsUploadDir);
 
 // Authentication & Authorization
 app.UseAuthentication();

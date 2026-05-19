@@ -2,6 +2,7 @@ namespace VehicleParts.API.Services
 {
     public interface IEmailService
     {
-        Task SendEmailAsync(string toEmail, string subject, string htmlMessage, int? invoiceId = null);
+        Task<EmailSendResult> SendEmailAsync(string toEmail, string subject, string htmlMessage, int? invoiceId = null);
+        EmailSettingsOptions GetEffectiveSettings();
     }
 }

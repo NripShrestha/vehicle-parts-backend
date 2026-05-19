@@ -8,6 +8,6 @@ namespace VehicleParts.API.Services
         Task<SalesInvoiceDto?> GetInvoiceByIdAsync(int id);
         Task<List<SalesInvoiceDto>> GetAllInvoicesAsync();
         Task<SalesInvoiceDto?> UpdatePaymentStatusAsync(int id, UpdateSalesInvoicePaymentDto updateDto);
-        Task<bool> SendInvoiceEmailAsync(int invoiceId);
+        Task<InvoiceEmailSendResult> SendInvoiceEmailAsync(int invoiceId);
     }
 }

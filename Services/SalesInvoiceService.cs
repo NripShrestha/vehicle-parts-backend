@@ -10,11 +10,16 @@ namespace VehicleParts.API.Services
         private static readonly string[] AllowedPaymentStatuses = { "Paid", "Partial", "Unpaid" };
         private readonly ApplicationDbContext _context;
         private readonly IEmailService _emailService;
+        private readonly ILogger<SalesInvoiceService> _logger;
 
-        public SalesInvoiceService(ApplicationDbContext context, IEmailService emailService)
+        public SalesInvoiceService(
+            ApplicationDbContext context,
+            IEmailService emailService,
+            ILogger<SalesInvoiceService> logger)
         {
             _context = context;
             _emailService = emailService;
+            _logger = logger;
         }
 
         public async Task<SalesInvoiceDto> CreateInvoiceAsync(CreateSalesInvoiceDto createDto)
@@ -79,13 +84,20 @@ namespace VehicleParts.API.Services
             _context.SalesInvoices.Add(invoice);
             await _context.SaveChangesAsync();
 
-            try
+            var emailResult = await SendInvoiceEmailAsync(invoice.SalesInvoiceID);
+            if (!emailResult.Success)
             {
-                await SendInvoiceEmailAsync(invoice.SalesInvoiceID);
+                _logger.LogWarning(
+                    "Invoice {InvoiceId} created but email was not sent: {Reason}",
+                    invoice.SalesInvoiceID,
+                    emailResult.Message);
             }
-            catch (Exception ex)
+            else if (emailResult.DeliveryMode == EmailDeliveryMode.Mock)
             {
-                Console.WriteLine($"[EMAIL ERROR] Automatic invoice email failed: {ex.Message}");
+                _logger.LogWarning(
+                    "Invoice {InvoiceId} email saved locally only (mock mode). Configure SMTP to deliver to the customer inbox. Path: {Path}",
+                    invoice.SalesInvoiceID,
+                    emailResult.MockFilePath);
             }
 
             return await GetInvoiceByIdAsync(invoice.SalesInvoiceID) ?? throw new Exception("Failed to retrieve created invoice.");
@@ -153,7 +165,7 @@ namespace VehicleParts.API.Services
             return MapToDto(invoice);
         }
 
-        public async Task<bool> SendInvoiceEmailAsync(int invoiceId)
+        public async Task<InvoiceEmailSendResult> SendInvoiceEmailAsync(int invoiceId)
         {
             var invoice = await _context.SalesInvoices
                 .Include(i => i.Items)
@@ -164,10 +176,23 @@ namespace VehicleParts.API.Services
                     .ThenInclude(s => s!.User)
                 .FirstOrDefaultAsync(i => i.SalesInvoiceID == invoiceId);
 
-            if (invoice == null || invoice.Customer?.User?.Email == null) return false;
+            if (invoice == null)
+            {
+                return InvoiceEmailSendResult.NotFound();
+            }
 
-            string customerEmail = invoice.Customer.User.Email;
-            string customerName = invoice.Customer.User.FullName;
+            var customerEmail = invoice.Customer?.User?.Email;
+            if (string.IsNullOrWhiteSpace(customerEmail))
+            {
+                _logger.LogWarning(
+                    "Cannot send invoice {InvoiceId}: customer {CustomerId} has no email.",
+                    invoiceId,
+                    invoice.CustomerID);
+                return InvoiceEmailSendResult.NoCustomerEmail();
+            }
+
+            customerEmail = customerEmail.Trim();
+            string customerName = invoice.Customer?.User?.FullName ?? "Customer";
             string staffName = invoice.Staff?.User?.FullName ?? "Staff Member";
             string dateString = invoice.InvoiceDate.ToString("MMMM dd, yyyy HH:mm");
             decimal amountPaidNow = invoice.TotalAmount - invoice.CreditAmount;
@@ -319,8 +344,8 @@ namespace VehicleParts.API.Services
 </html>";
 
             string subject = $"Invoice #INV-{invoice.SalesInvoiceID:D5} from AutoPart Inventory";
-            await _emailService.SendEmailAsync(customerEmail, subject, htmlBody, invoice.SalesInvoiceID);
-            return true;
+            var sendResult = await _emailService.SendEmailAsync(customerEmail, subject, htmlBody, invoice.SalesInvoiceID);
+            return InvoiceEmailSendResult.FromEmailResult(sendResult);
         }
 
         private static (string PaymentStatus, decimal CreditAmount) ResolvePaymentDetails(string paymentStatus, decimal requestedCreditAmount, decimal totalAmount)
