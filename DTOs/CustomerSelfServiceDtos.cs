@@ -29,6 +29,31 @@ namespace VehicleParts.API.DTOs
         public string AppointmentStatus { get; set; } = string.Empty;
     }
 
+    public class StaffAppointmentDto
+    {
+        public int AppointmentID { get; set; }
+        public int CustomerID { get; set; }
+        public string CustomerName { get; set; } = string.Empty;
+        public int VehicleID { get; set; }
+        public string VehicleNumber { get; set; } = string.Empty;
+        public string VehicleName { get; set; } = string.Empty;
+        public DateTime AppointmentDate { get; set; }
+        public TimeSpan AppointmentTime { get; set; }
+        public string ServiceType { get; set; } = string.Empty;
+        public string AppointmentStatus { get; set; } = string.Empty;
+    }
+
+    public class MarketplacePartDto
+    {
+        public int PartID { get; set; }
+        public string PartName { get; set; } = string.Empty;
+        public string Category { get; set; } = string.Empty;
+        public decimal SellingPrice { get; set; }
+        public int StockQuantity { get; set; }
+        public int ReorderLevel { get; set; }
+        public string? ImageUrl { get; set; }
+    }
+
     public class CreatePartRequestDto
     {
         [Required]

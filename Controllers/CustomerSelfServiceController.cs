@@ -20,6 +20,28 @@ namespace VehicleParts.API.Controllers
             _context = context;
         }
 
+        [HttpGet("catalog")]
+        public async Task<ActionResult<IEnumerable<MarketplacePartDto>>> GetCatalog()
+        {
+            var parts = await _context.Parts
+                .AsNoTracking()
+                .Where(p => p.StockQuantity > 0)
+                .OrderBy(p => p.PartName)
+                .Select(p => new MarketplacePartDto
+                {
+                    PartID = p.PartID,
+                    PartName = p.PartName,
+                    Category = p.Category,
+                    SellingPrice = p.SellingPrice,
+                    StockQuantity = p.StockQuantity,
+                    ReorderLevel = p.ReorderLevel,
+                    ImageUrl = p.ImageUrl
+                })
+                .ToListAsync();
+
+            return Ok(parts);
+        }
+
         [HttpPost("appointments")]
         public async Task<ActionResult<AppointmentDto>> BookAppointment([FromBody] CreateAppointmentDto request)
         {
