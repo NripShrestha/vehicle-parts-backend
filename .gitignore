@@ -6,3 +6,5 @@ obj/
 *.log
 .idea/
 SentEmails/
+wwwroot/uploads/parts/*
+!wwwroot/uploads/parts/.gitkeep

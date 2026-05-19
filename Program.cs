@@ -113,7 +113,7 @@ if (app.Environment.IsDevelopment())
 app.UseCors("AllowReact");
 app.UseHttpsRedirection();
 
-
+app.UseStaticFiles();
 
 // Authentication & Authorization
 app.UseAuthentication();
@@ -122,4 +122,8 @@ app.UseAuthorization();
 // Map Controllers
 app.MapControllers();
 
-app.Run();
+var isEfToolingCommand = args.Length == 1 && args[0] == ".";
+if (!EF.IsDesignTime && !isEfToolingCommand)
+{
+    app.Run();
+}
