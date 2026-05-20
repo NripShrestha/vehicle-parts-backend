@@ -203,7 +203,7 @@ namespace VehicleParts.API.Controllers
         [HttpPost("{id}/image")]
         [Authorize(Roles = "Admin")]
         [Consumes("multipart/form-data")]
-        public async Task<ActionResult> UploadPartImage(int id, [FromForm] IFormFile? image)
+        public async Task<ActionResult> UploadPartImage(int id, IFormFile? image)
         {
             var part = await _context.Parts.FindAsync(id);
             if (part == null)
